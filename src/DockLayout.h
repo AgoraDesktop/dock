@@ -28,9 +28,10 @@ typedef enum {
 	DockOrientationLeft = 1
 } DockOrientation;
 
-/* THE FIVE NUMBERS THE STRIP IS MADE OF, in points. A tile is 44 and the strip 64, which leaves ten points of air
- * on each side of an icon; the margin is the strip's own inset, the spacing is between two tiles, and the separator
- * is the gap the trash sits below. */
+/* THE FIVE NUMBERS THE STRIP IS MADE OF, in points. A tile is 48 and the strip 64, which leaves eight points of air
+ * on each side of an icon — a tile that fills the band rather than floating in it, which is the proportion the mockup
+ * shows; the margin is the strip's own inset, the spacing is between two tiles, and the separator is the gap the trash
+ * sits below. */
 typedef struct {
 	CGFloat width;
 	CGFloat tile;

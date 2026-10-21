@@ -82,9 +82,9 @@ int main(int argc, char **argv)
 
 	application = [NSApplication sharedApplication];
 	/* **ACCESSORY, BECAUSE THE DOCK HAS NO MENUS OF ITS OWN.** An application with the Regular policy owns the menu
-	 * bar when it is active; the Dock should never be the application the bar belongs to. The window server still
-	 * gives it the keyboard on a click today — a door this needs and does not have — and that is recorded in the
-	 * README rather than papered over with an empty menu. */
+	 * bar when it is active; the Dock must never be the application the bar belongs to. The policy is the AppKit's
+	 * half and `-cg_setActivatable:` on the window is the window server's — a policy alone would not stop a click
+	 * from taking the keyboard, which is why the Strip's controller sets both. */
 	[application setActivationPolicy:NSApplicationActivationPolicyAccessory];
 	[application finishLaunching];
 

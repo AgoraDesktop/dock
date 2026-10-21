@@ -9,10 +9,10 @@
  * the same width is furniture, so `NSScreen -visibleFrame` shrinks by it and no maximised window runs under the
  * Dock. Two statements of one number, made together, which is why they live in one method.
  *
- * **IT DOES NOT TAKE THE KEYBOARD, OR SHOULD NOT.** The application is launched with the Accessory activation
- * policy and sets `NSApplicationActivationPolicyAccessory`, so it has no menu bar of its own; the window server's
- * click-to-focus still gives it the keyboard when a tile is clicked, which is the one gap this needs from the
- * server (a window that never activates). It is named in the README rather than worked around.
+ * **AND IT NEVER TAKES THE KEYBOARD.** Two halves, both stated: the Accessory activation policy (so the Dock has no
+ * menu bar of its own) and `-cg_setActivatable:NO` on the window (`agora_window.set_activatable`), so a click on a
+ * tile reaches the Dock's view without making the Dock the active application. Without the second half the menu bar
+ * followed the click and the desktop was left with no bar at all — MEASURED, and the reason the door exists.
  */
 #import "DockController.h"
 
@@ -63,7 +63,7 @@
 							backing:NSBackingStoreBuffered
 							  defer:NO];
 		/* **TRANSPARENT, AND SAID BEFORE THE WINDOW IS SHOWN.** The seam chooses the buffer's format from
-		 * `-isOpaque` when the window is made, so this order is the difference between a frosted shelf and a
+		 * `-isOpaque` when the window is made, so this order is the difference between a translucent band and a
 		 * black rectangle. */
 		[_window setOpaque:NO];
 		[_window setBackgroundColor:[NSColor clearColor]];
@@ -71,6 +71,10 @@
 		[_window setReleasedWhenClosed:NO];
 		/* NOT IN THE WINDOW MENU, NOT IN EXPOSÉ, AND NOT MOVED BY EITHER: the Dock is furniture. */
 		[_window setCollectionBehavior:(NSWindowCollectionBehaviorStationary | NSWindowCollectionBehaviorIgnoresCycle)];
+		/* **AND A CLICK ON IT NEVER MAKES THE DOCK THE ACTIVE APPLICATION.** Without this, clicking a tile gives
+		 * the DOCK the keyboard, the menu bar follows it, and the desktop is left with no bar at all — MEASURED,
+		 * which is why the door exists. The pointer still reaches the Dock; only the keyboard and the bar stay put. */
+		[_window cg_setActivatable:NO];
 
 		_view = [[DockView alloc] initWithFrame:NSMakeRect(0.0, 0.0, strip.size.width, strip.size.height)];
 		[_view setOrientation:_orientation];

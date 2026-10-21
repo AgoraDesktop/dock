@@ -1,13 +1,14 @@
 /*
- * DockView.m — the frosted strip, the icons, and the one dot that means "this one has the keyboard".
+ * DockView.m — the flat semitransparent band, the icons, and the one dot that means "this one has the keyboard".
  *
  * Copyright © 2026 Kyle J. Cardoza. MIT licensed.
  * SPDX-License-Identifier: MIT
  *
  * **THE BACKGROUND IS DRAWN BY THE VIEW AND NOT BY THE WINDOW**, because the window is transparent: the compositor
- * blends the strip over the wallpaper, and everything the view does not paint stays transparent. The rounded shelf
- * is inset from the strip's own edges so that the screen's edge shows a margin rather than a cut-off corner — the
- * same reason the Mac's Dock leaves air above its trash.
+ * blends the strip over the wallpaper, and everything the view does not paint stays transparent. The strip is FLAT
+ * — square corners, no inset, no border — because it belongs to the screen's edge rather than floating over the
+ * desktop: the mockup shows one dark semitransparent band from the menu bar down, and a shape is what tells a
+ * person which of the two Docks they are looking at.
  *
  * **THE DOTTED INDICATOR IS THE ACTIVE APPLICATION, NOT "RUNNING".** Every tile in this Dock is a running
  * application (the list it draws comes from `NSWorkspace -runningApplications`), so a Mac-style running dot on all
@@ -23,6 +24,7 @@
 #import <AppKit/NSWorkspace.h>
 
 #import <Foundation/NSArray.h>
+#import <Foundation/NSFileManager.h>
 #import <Foundation/NSString.h>
 
 /* **WHAT THE VIEW ASKS ITS CONTROLLER FOR, DECLARED WHERE IT IS CALLED.** The view reports a tile INDEX and the
@@ -34,10 +36,12 @@
 - (void)showMenuForTileAtIndex:(NSNumber *)index withEvent:(id)event;
 @end
 
-#define DOCK_SHELF_INSET	4.0
-#define DOCK_SHELF_RADIUS	10.0
-#define DOCK_INDICATOR_SIZE	5.0
-#define DOCK_INDICATOR_GAP	6.0
+/* **THE DOT LIVES IN THE EIGHT-POINT MARGIN, WHICH IS THE ONLY PLACE IT CAN BE SEEN.** With a 48-point tile in a
+ * 64-point band the inner margin is 8 points; a 4-point dot two points into it is the widest mark that still fits. At
+ * the old 5-point dot and 6-point gap the mark was placed at x = -3 — off the view — so the indicator was drawn
+ * nowhere at all. */
+#define DOCK_INDICATOR_SIZE	4.0
+#define DOCK_INDICATOR_GAP	2.0
 
 @implementation DockView
 
@@ -87,16 +91,29 @@
 	_controller = controller;	/* NOT retained: the controller owns this view */
 }
 
-/* THE TRASH'S ICON, WHICH IS THE THEME'S `user-trash` — asked of Icon Services through the directory rather than by
- * a name, because a place icon is keyed by the path it describes. Cached: it does not change while the Dock runs. */
+/* THE TRASH'S ICON IS THE ICON OF THE TRASH DIRECTORY — that is the Mac's own answer: `NSWorkspace -iconForFile:`
+ * on `~/.Trash` returns the can, and Icon Services already maps that exact path to the theme's `user-trash` place icon
+ * (`AGIconLoader.c`, `placeNameForPath`).
+ *
+ * **SO THE DIRECTORY HAS TO EXIST, AND ON A FRESH INSTALL IT DOES NOT.** Nothing has been thrown away yet, so there is
+ * no `~/.Trash` to look up: `stat` fails, the path is not a directory, and the icon that comes back is a GENERIC FILE —
+ * a piece of paper in the Dock's trash slot. MEASURED, in the session, which is why this creates it. The session does
+ * the same at login (`demo/agora-session.sh`), because that is the Mac's arrangement: the directory is the user's, not
+ * a window's. The Dock creates it here only so that a Dock started on its own is not wrong; `WSTrash` will be the one
+ * that owns recycling, Put Back and per-volume semantics (WORKSPACE-PLAN.md §5.3). */
 - (NSImage *)trashIcon
 {
 	if (_trashIcon == nil) {
 		NSString *home = NSHomeDirectory();
 
 		if (home != nil) {
-			_trashIcon = [[[NSWorkspace sharedWorkspace] iconForFile:[home stringByAppendingPathComponent:@".Trash"]]
-				      retain];
+			NSString *trash = [home stringByAppendingPathComponent:@".Trash"];
+			NSFileManager *files = [NSFileManager defaultManager];
+
+			if (![files fileExistsAtPath:trash]) {
+				[files createDirectoryAtPath:trash withIntermediateDirectories:NO attributes:nil error:NULL];
+			}
+			_trashIcon = [[[NSWorkspace sharedWorkspace] iconForFile:trash] retain];
 		}
 	}
 	return _trashIcon;
@@ -153,22 +170,18 @@
 
 - (void)drawRect:(NSRect)dirtyRect
 {
-	NSRect shelf = NSInsetRect([self bounds], DOCK_SHELF_INSET, DOCK_SHELF_INSET);
-	NSBezierPath *background;
 	NSUInteger count = [_applications count];
 	NSUInteger fits = DockTilesThatFit([self bounds], DockDefaultMetrics);
 	NSUInteger shown = (count < fits) ? count : fits;
 	NSUInteger i;
 
 	(void)dirtyRect;
-	/* THE SHELF. A translucent near-black with the light grey line the platform's chrome uses: the Dock sits over
-	 * a wallpaper, so it has to be both readable and see-through, and 0.55 alpha is the sample the Argentum palette
-	 * uses for a raised surface over an arbitrary background. */
-	background = [NSBezierPath bezierPathWithRoundedRect:shelf xRadius:DOCK_SHELF_RADIUS yRadius:DOCK_SHELF_RADIUS];
-	[[NSColor colorWithCalibratedRed:0.09 green:0.09 blue:0.10 alpha:0.55] setFill];
-	[background fill];
-	[[NSColor colorWithCalibratedRed:1.0 green:1.0 blue:1.0 alpha:0.18] setStroke];
-	[background setLineWidth:1.0];	[background stroke];
+	/* **FLAT, SEMITRANSPARENT, AND DARKER THAN WHAT IS BEHIND IT — the mockup's band, not a shelf.** No rounded
+	 * corners, no inset, no border: the strip is a SHADE over the wallpaper, edge to edge, so a person sees the
+	 * desktop underneath with the Dock's tiles on it. The Mac's Dock floats; Agora's belongs to the screen's edge, and
+	 * that is a difference of shape, not of colour. */
+	[[NSColor colorWithCalibratedRed:0.06 green:0.07 blue:0.08 alpha:0.45] setFill];
+	[NSBezierPath fillRect:[self bounds]];
 
 	for (i = 0; i < shown; i++) {
 		NSRunningApplication *application = [_applications objectAtIndex:i];

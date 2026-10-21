@@ -14,6 +14,11 @@ follows the keyboard.
 screen minus the bar, flush with the right edge; the tiles stack from the top downwards and the trash is pinned at the
 bottom, so it stays where it is while applications come and go.
 
+**It is a band and not a shelf: flat, square-cornered, semitransparent and darker than what is behind it** — edge to
+edge, no inset and no border, so the wallpaper shows through the whole width and the strip belongs to the screen's
+edge. That shape is the mockup's, and it is the difference a person sees between Agora's Dock and the Mac's floating
+one.
+
 **Left is the alternative, and it is one setting.** The layout is a mirror and nothing else changes:
 
 ```sh
@@ -36,23 +41,35 @@ application with no bundle on disk gets a muted placeholder rather than nothing.
 the keyboard** — every tile is running by definition, so a Mac-style "running" dot would carry no information, and the
 one thing that changes is which application is in front.
 
+**The trash's icon is the icon of `~/.Trash`**, which is the Mac's own answer: Icon Services maps that path to the
+theme's `user-trash` place icon. Which means the DIRECTORY has to exist — `stat` on a missing path is not a directory,
+and the lookup then answers a generic file (a piece of paper in the trash slot; MEASURED). The session creates it at
+login the way the Mac does, and the Dock creates it if it is missing so that a Dock started alone is not wrong. What a
+click or a drop on it MEANS is still Workspace's (below).
+
 Click a tile: `-[NSRunningApplication activateWithOptions:]` — raise **and** keyboard. Right-click: a menu with
 **Quit**, which is `-terminate`, a request that every window close, not a kill.
 
 ## What is not here yet, named
 
-- **A click on a tile also gives the DOCK the keyboard.** The window server's click-to-focus has no door for a window
-  that never activates, so the Dock becomes the active application for a moment and the menu bar goes with it. The fix
-  is a server request (`agora_window.set_activatable` or its equivalent) and an AppKit door over it; `main.m` already
-  sets `NSApplicationActivationPolicyAccessory`, which the server does not yet read.
 - **The trash does nothing on click, and takes no drops.** Its icon is here, but what a click or a drop MEANS is
   Workspace's (`WSTrash`) and the contract between the two is `WORKSPACE-PLAN.md` §5.3, still undecided. Cross-process
   drag does not exist in the window server yet, so a drop could not arrive.
 - **No badges, no bounce, no magnification, no pinned applications.** Badges need `NSDockTile`; bounce needs
   `-requestUserAttention:` to reach the Dock; pinned applications need a persisted list and a Launch Services scan of
   the Applications directory; magnification is a drawing decision nobody has made.
-- **No overflow.** A strip holds twelve tiles at 720 points (`DockLayout`, tested); more applications than that are
+- **No overflow.** A strip holds eleven tiles at 720 points (`DockLayout`, tested); more applications than that are
   simply not shown.
+- **The session's wallpaper client appears as a tile**, with a placeholder icon, because it is an application with a
+  window like any other. When the wallpaper moves to the layer the plan gives it (`kCGDesktopWindowLevel`), that tile
+  goes with it.
+
+**AND THE ONE THING THAT WAS BROKEN IS FIXED, NOT WORKED AROUND.** A click used to make the DOCK the active
+application — the menu bar followed it, and the desktop was left with no bar at all. The window server now has
+`agora_window.set_activatable` (protocol version 3, shell 4), the Dock says NO for its window, and the Dock exposes it
+as `-[NSWindow cg_setActivatable:]` beside the reservation door. The pointer still reaches the tiles; the keyboard and
+the bar stay where they were. `window-server/tests/window_list.c` asserts both halves: a window made non-activatable
+gives the keyboard back, and `activate_window` cannot give it to one.
 
 ## Build and run
 
@@ -72,7 +89,7 @@ WAYLAND_DISPLAY=agora ./build/Dock.app/Contents/*/*/Dock
 ## Tests
 
 `tests/dock_layout.m` — **14 checks**, no compositor, no pixels: the strip is on the right (or the left), its top is
-exactly the menu bar's bottom, tiles walk down from the top, the trash is pinned, twelve fit at 720 points, and a strip
+exactly the menu bar's bottom, tiles walk down from the top, the trash is pinned, eleven fit at 720 points, and a strip
 with no room answers zero rather than a negative count.
 
 ## Licence

@@ -9,7 +9,7 @@
 
 const DockMetrics DockDefaultMetrics = {
 	.width = 64.0,
-	.tile = 44.0,
+	.tile = 48.0,
 	.margin = 8.0,
 	.spacing = 8.0,
 	.separator = 12.0
