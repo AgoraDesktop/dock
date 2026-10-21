@@ -101,10 +101,15 @@
 							     name:NSWorkspaceDidActivateApplicationNotification
 							   object:nil];
 		[self refresh];
-		fprintf(stderr, "dock: %s, strip %.0fx%.0f at (%.0f,%.0f), %lu application(s)\n",
+		/* **THE LINE DOES NOT COUNT APPLICATIONS, BECAUSE AT THIS MOMENT THERE CANNOT BE ANY.** The list is a
+		 * Wayland snapshot: `-runningApplications` asks for it, and the answer arrives on a later loop pass, so a
+		 * count read here is always zero however many applications are running — MEASURED as `0 application(s)` in
+		 * a session where Workspace was on the screen, which reads as a bug and is only the ask preceding the
+		 * answer. The real count is a snapshot's to report; `AGORA_DOCK_DIAG=1` prints it after every one. */
+		fprintf(stderr, "dock: %s, strip %.0fx%.0f at (%.0f,%.0f)\n",
 			_orientation == DockOrientationRight ? "right" : "left",
 			(double)strip.size.width, (double)strip.size.height, (double)strip.origin.x,
-			(double)strip.origin.y, (unsigned long)[_applications count]);
+			(double)strip.origin.y);
 	}
 	return self;
 }
