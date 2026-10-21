@@ -203,8 +203,12 @@
 	if (i >= [_applications count]) {
 		return;
 	}
-	/* **A CLICK ON A TILE IS `-activateWithOptions:`, WHICH IS RAISE AND KEYBOARD.** The application's menu bar
-	 * follows the keyboard, so this is also what makes the bar change to the application the person just picked. */
+	/* **A CLICK ON A TILE IS `-activateWithOptions:`, WHICH IS RAISE AND KEYBOARD — OR A REQUEST FOR A WINDOW.**
+	 * The application's windows come forward — all of them, in the order they were already in — and the frontmost
+	 * takes the keyboard, which is what makes the menu bar change to the application the person just picked. An
+	 * application whose windows are all furniture (Workspace with its desktop and no file window) has nothing to
+	 * raise, and then the AppKit asks it to reopen and it opens a window. The Dock does not decide which of the two
+	 * happened: a tile names an application, and what "bring it forward" means is the application's answer. */
 	[[_applications objectAtIndex:i] activateWithOptions:NSApplicationActivateAllWindows];
 }
 

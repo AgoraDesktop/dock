@@ -47,8 +47,11 @@ and the lookup then answers a generic file (a piece of paper in the trash slot; 
 login the way the Mac does, and the Dock creates it if it is missing so that a Dock started alone is not wrong. What a
 click or a drop on it MEANS is still Workspace's (below).
 
-Click a tile: `-[NSRunningApplication activateWithOptions:]` — raise **and** keyboard. Right-click: a menu with
-**Quit**, which is `-terminate`, a request that every window close, not a kill.
+Click a tile: `-[NSRunningApplication activateWithOptions:]` — every window the application has is raised in its
+level, **back to front, so its own window order is kept**, and the frontmost takes the keyboard. An application with
+nothing to raise — Workspace showing only its desktop — is ASKED to reopen instead, and opens a file window, which is
+the Mac's behaviour for that click. Right-click: a menu with **Quit**, which is `-terminate`, a request that every
+window close, not a kill.
 
 ## What is not here yet, named
 
