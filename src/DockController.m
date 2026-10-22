@@ -21,6 +21,7 @@
 #import <AppKit/NSApplication.h>
 #import <AppKit/NSColor.h>
 #import <AppKit/NSMenu.h>
+#import <AppKit/NSDockMenu.h>
 #import <AppKit/NSMenuItem.h>
 #import <AppKit/NSRunningApplication.h>
 #import <AppKit/NSScreen.h>
@@ -227,14 +228,72 @@
 	[_menuApplication release];
 	_menuApplication = [application retain];
 
+	/* **THE APPLICATION'S OWN ITEMS COME FIRST, AND THEY COME FROM IT.** A tile's menu is the application's answer to
+	 * `-applicationDockMenu:` with the Dock's own rows under it — the Mac's arrangement, and the reason the two
+	 * halves have to meet in ONE panel: an application cannot draw at the Dock's edge, and a Dock cannot know what an
+	 * application's menu means. `NSDockMenu` asks (bounded), waits, and builds the rows; each carries the id the
+	 * application gave it, which is what a pick sends back. */
+	menu = [[NSDockMenu menuForApplication:application] retain];
+	if (menu == nil) {
+		/* NO MENU IS STILL A MENU: the Dock's own rows, and nothing else. */
+		menu = [[NSMenu alloc] initWithTitle:@""];
+	} else {
+		[self bindApplicationItemsInMenu:menu];
+		/* **AND THE DOCK DOES NOT RE-VALIDATE THE APPLICATION'S ROWS.** `-update`'s enabling walk would ask each
+		 * item's target — which is this controller now — whether it answers the action, and that would enable
+		 * every row the description marked disabled. The validation was made in the application, where the real
+		 * targets are, so the Dock's job is to draw what it was told. */
+		[menu setAutoenablesItems:NO];
+		/* A SEPARATOR ONLY WHEN THERE IS SOMETHING ABOVE IT TO SEPARATE — an empty application menu followed by a
+		 * rule would be a menu that starts with one. */
+		if ([menu numberOfItems] > 0) {
+			[menu addItem:[NSMenuItem separatorItem]];
+		}
+	}
+
 	title = [NSString stringWithFormat:@"Quit %@", [application localizedName]];
-	menu = [[NSMenu alloc] initWithTitle:@""];
 	item = [[NSMenuItem alloc] initWithTitle:title action:@selector(quitFromMenu:) keyEquivalent:@""];
 	[item setTarget:self];
 	[menu addItem:item];
 	[item release];
 	[NSMenu popUpContextMenu:menu withEvent:event forView:_view];
 	[menu release];
+}
+
+/* **THE APPLICATION'S ROWS BECOME THE DOCK'S TO SEND, AND NOTHING ELSE ABOUT THEM CHANGES.** A row the description
+ * gave an id is one the person may choose, so it gets this controller and one selector — the id travels in its
+ * `-representedObject` — while a row that opens a submenu is recursed into and the submenu's own rows are bound the
+ * same way. Separators and anything without an id are left exactly as they arrived. */
+- (void)bindApplicationItemsInMenu:(NSMenu *)menu
+{
+	NSArray *items = [menu itemArray];
+	NSUInteger i;
+
+	for (i = 0; i < [items count]; i++) {
+		NSMenuItem *menuItem = [items objectAtIndex:i];
+
+		if ([menuItem submenu] != nil) {
+			[self bindApplicationItemsInMenu:(NSMenu *)[menuItem submenu]];
+			continue;
+		}
+		if ([menuItem representedObject] == nil) {
+			continue;
+		}
+		[menuItem setTarget:self];
+		[menuItem setAction:@selector(activateApplicationMenuItem:)];
+	}
+}
+
+- (void)activateApplicationMenuItem:(id)sender
+{
+	NSNumber *identifier = [(NSMenuItem *)sender representedObject];
+
+	if (_menuApplication == nil || identifier == nil) {
+		return;
+	}
+	/* **THE ID AND THE APPLICATION, AND NOTHING ELSE CROSSES.** What the row means — the action, the target, the
+	 * state it changes — is the application's, and it sends it itself when the id comes home. */
+	[NSDockMenu dispatchActionForItem:[identifier integerValue] toApplication:_menuApplication];
 }
 
 - (void)quitFromMenu:(id)sender

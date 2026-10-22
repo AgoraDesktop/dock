@@ -53,6 +53,23 @@ nothing to raise — Workspace showing only its desktop — is ASKED to reopen i
 the Mac's behaviour for that click. Right-click: a menu with **Quit**, which is `-terminate`, a request that every
 window close, not a kill.
 
+**AND THE MENU IS THE APPLICATION'S ABOVE THE DOCK'S, WHICH IS ONE PANEL WITH TWO OWNERS.** An application may offer
+items for its own tile — `-applicationDockMenu:` on its delegate, which is Apple's door — and those items appear ABOVE
+the separator and the Quit, exactly as the Mac's do. That takes a round trip, because the panel is the Dock's (an
+application cannot draw at the Dock's screen edge) and the items are the application's (the Dock cannot know what an
+item means), so:
+
+- the Dock asks through `+[NSDockMenu menuForApplication:]`, which asks the window server, which forwards
+  `agora_window.dock_menu_requested` to the application's frontmost window;
+- the application answers `-applicationDockMenu:`, and `NSDockMenu` carries the items across as a description — title,
+  enabled, state, submenus, and an id for each row a person can choose;
+- a pick goes back by that id (`+dispatchActionForItem:toApplication:`) and the APPLICATION sends its own action.
+
+**IT ASKS EVERY TIME, AND THAT IS THE POINT.** A tile's menu is a picture of what the application can do at this
+moment, so it is built when the menu opens and not before. The ask is bounded at half a second and falls back to the
+Dock's own rows, so an application that is hung — or one that implements nothing — costs a right-click some latency
+and never a panel that fails to open. See `NSDockMenu.h` in `libagora-app` for both halves and the format.
+
 ## What is not here yet, named
 
 - **The trash does nothing on click, and takes no drops.** Its icon is here, but what a click or a drop MEANS is
@@ -94,6 +111,12 @@ WAYLAND_DISPLAY=agora ./build/Dock.app/Contents/*/*/Dock
 `tests/dock_layout.m` — **14 checks**, no compositor, no pixels: the strip is on the right (or the left), its top is
 exactly the menu bar's bottom, tiles walk down from the top, the trash is pinned, eleven fit at 720 points, and a strip
 with no room answers zero rather than a negative count.
+
+The tile's MENU is tested where its two halves live rather than here, because neither half is the Dock's: the
+description format and the id numbering are `libagora-app`'s (`appkit-dock-menu`, no compositor needed), and the round
+trip through the window server is `appkit-dock-menu-wire`, which runs against `window-server`. What this component
+adds to a menu — the separator, the Quit, and giving each of the application's rows the Dock's target — is the code
+those two tests name.
 
 ## Licence
 

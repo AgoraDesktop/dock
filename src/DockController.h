@@ -23,6 +23,7 @@
 #import "DockLayout.h"
 
 @class NSArray;
+@class NSMenu;
 @class NSRunningApplication;
 @class NSWindow;
 @class DockView;
@@ -45,10 +46,18 @@
 /* The strip the Dock has taken, in screen coordinates — the number a test or a log is about. */
 - (NSRect)stripRect;
 
-/* The two doors the view calls, and the menu's own action. */
+/* The two doors the view calls, and the menu's own actions. */
 - (void)activateTileAtIndex:(NSNumber *)index;
 - (void)showMenuForTileAtIndex:(NSNumber *)index withEvent:(id)event;
+/* **AND THE BINDING WALK**, which gives each of the application's rows the Dock's own target so that a pick can be
+ * routed back by the id the application gave it. Recursive over submenus; declared here because the menu builder
+ * calls it before it is defined. */
+- (void)bindApplicationItemsInMenu:(NSMenu *)menu;
 - (void)quitFromMenu:(id)sender;
+/* **AND THE ROW THAT CAME FROM THE APPLICATION.** A tile's menu is composed of two halves — the items the
+ * application published for that tile and the Dock's own under them — and a row of the first half is dispatched by
+ * its id, back to the application that numbered it. The Dock never sees an action, a target or a meaning. */
+- (void)activateApplicationMenuItem:(id)sender;
 
 @end
 
