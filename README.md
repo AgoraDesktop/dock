@@ -41,6 +41,11 @@ application with no bundle on disk gets a muted placeholder rather than nothing.
 the keyboard** — every tile is running by definition, so a Mac-style "running" dot would carry no information, and the
 one thing that changes is which application is in front.
 
+**A BADGE IS THE APPLICATION'S OWN LABEL, DRAWN ON THE TILE'S OUTER CORNER.** The Dock does not compute it: the
+application sets `NSDockTile -badgeLabel`, the AppKit pushes it through `agora-shell` 8, and the Dock asks
+`NSDockTile +badgeLabelsByApplicationIdentifier` once per refresh and draws what it gets — a chip on the icon's
+top-right, clamped to the tile. An application that never sets one contributes nothing, which is the ordinary case.
+
 **The trash's icon is the icon of `~/.Trash`**, which is the Mac's own answer: Icon Services maps that path to the
 theme's `user-trash` place icon. Which means the DIRECTORY has to exist — `stat` on a missing path is not a directory,
 and the lookup then answers a generic file (a piece of paper in the trash slot; MEASURED). The session creates it at

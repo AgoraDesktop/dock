@@ -19,7 +19,9 @@
 
 #import <AppKit/NSBezierPath.h>
 #import <AppKit/NSColor.h>
+#import <AppKit/NSFont.h>
 #import <AppKit/NSImage.h>
+#import <AppKit/NSStringDrawing.h>
 #import <AppKit/NSRunningApplication.h>
 #import <AppKit/NSWorkspace.h>
 
@@ -56,6 +58,7 @@
 - (void)dealloc
 {
 	[_applications release];
+	[_badgeLabels release];
 	[_trashIcon release];
 	[super dealloc];
 }
@@ -67,6 +70,50 @@
 	[_applications release];
 	_applications = copy;
 	[self setNeedsDisplay:YES];
+}
+
+/* **A BADGE IS A CHIP ON THE ICON'S OUTER CORNER**, which is the Mac's own answer and the only place a label fits on a
+ * 48-point tile: counted from the icon's top-right, right-aligned on a right-hand Dock so it grows inward. An
+ * application with no label in the dictionary draws nothing, which is the ordinary case.
+ */
+- (void)setBadgeLabels:(NSDictionary *)labels
+{
+	NSDictionary *copy = [labels copy];
+
+	[_badgeLabels release];
+	_badgeLabels = copy;
+}
+
+- (void)drawBadgeForApplication:(NSRunningApplication *)application inTile:(NSRect)tile
+{
+	NSString *label;
+	NSDictionary *attributes;
+	NSSize size;
+	CGFloat padding = 4.0;
+	NSRect chip;
+
+	if (_badgeLabels == nil || [application bundleIdentifier] == nil) {
+		return;
+	}
+	label = [_badgeLabels objectForKey:[application bundleIdentifier]];
+	if (label == nil || [label length] == 0) {
+		return;
+	}
+	attributes = [NSDictionary dictionaryWithObjectsAndKeys:
+		[NSFont boldSystemFontOfSize:10.0], NSFontAttributeName,
+		[NSColor whiteColor], NSForegroundColorAttributeName, nil];
+	size = [label sizeWithAttributes:attributes];
+	chip = NSMakeRect(NSMaxX(tile) - (size.width + 2.0 * padding),
+			  NSMaxY(tile) - (size.height + 2.0 * padding),
+			  size.width + 2.0 * padding, size.height + 2.0 * padding);
+	/* A CHIP THAT WOULD RUN OFF A NARROW TILE IS CLAMPED TO IT rather than drawn outside the strip. */
+	if (NSMinX(chip) < NSMinX(tile)) {
+		chip.origin.x = NSMinX(tile);
+		chip.size.width = NSWidth(tile);
+	}
+	[[NSColor colorWithCalibratedRed:0.85 green:0.18 blue:0.16 alpha:0.95] setFill];
+	[[NSBezierPath bezierPathWithRoundedRect:chip xRadius:(NSHeight(chip) / 2.0) yRadius:(NSHeight(chip) / 2.0)] fill];
+	[label drawAtPoint:NSMakePoint(NSMinX(chip) + padding, NSMinY(chip) + padding) withAttributes:attributes];
 }
 
 - (void)setActiveApplication:(NSRunningApplication *)application
@@ -198,6 +245,7 @@
 			[[NSColor colorWithCalibratedRed:0.35 green:0.38 blue:0.42 alpha:1.0] setFill];
 			[placeholder fill];
 		}
+		[self drawBadgeForApplication:application inTile:tile];
 		if (application == _active) {
 			/* THE DOT ON THE INNER SIDE: right of the icon on a left dock, left of it on a right dock. */
 			CGFloat x = (_orientation == DockOrientationRight)

@@ -22,6 +22,7 @@
 #import <AppKit/NSColor.h>
 #import <AppKit/NSMenu.h>
 #import <AppKit/NSDockMenu.h>
+#import <AppKit/NSDockTile.h>
 #import <AppKit/NSMenuItem.h>
 #import <AppKit/NSRunningApplication.h>
 #import <AppKit/NSScreen.h>
@@ -170,6 +171,10 @@
 	_applications = kept;
 	[_view setApplications:_applications];
 	[_view setActiveApplication:(frontmost != nil && [_applications containsObject:frontmost]) ? frontmost : nil];
+	/* **THE BADGES, ASKED ONCE PER SNAPSHOT AND HANDED OVER WITH THE APPLICATIONS.** `NSDockTile` answers what the
+	 * running applications published (the Dock's half of the class), and an empty answer — no compositor, nothing
+	 * published — is the ordinary case rather than an error. */
+	[_view setBadgeLabels:[NSDockTile badgeLabelsByApplicationIdentifier]];
 	/* **A TRACE, BECAUSE A DOCK IS HARD TO LOOK AT FROM A TEST.** `AGORA_DOCK_DIAG=1` prints what the strip
 	 * believes after every snapshot — the same shape the AppKit's own `APPKIT_*_DIAG` switches have, and what
 	 * `demo/` and a bug report are read from. */

@@ -23,6 +23,7 @@
 @private
 	NSArray *_applications;			/* NSRunningApplication, in the order the workspace gave them */
 	NSRunningApplication *_active;		/* the one with the keyboard, marked with the indicator */
+	NSDictionary *_badgeLabels;		/* bundle identifier -> the label its tile shows (NSDockTile) */
 	DockOrientation _orientation;
 	NSImage *_trashIcon;			/* resolved once from the trash directory */
 	id _controller;				/* NOT retained: the controller owns this view */
@@ -30,6 +31,8 @@
 
 - (void)setApplications:(NSArray *)applications;
 - (void)setActiveApplication:(NSRunningApplication *)application;
+/* **THE BADGES THE APPLICATIONS PUBLISHED**, keyed by bundle identifier; nil or empty clears them. */
+- (void)setBadgeLabels:(NSDictionary *)labels;
 - (void)setOrientation:(DockOrientation)orientation;
 - (void)setController:(id)controller;
 

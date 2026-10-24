@@ -14,3 +14,13 @@ target_link_libraries(dock_layout PRIVATE AgoraApp::App)
 set(_dock_test_env "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:AgoraApp::App>")
 add_test(NAME dock-layout COMMAND dock_layout)
 set_tests_properties(dock-layout PROPERTIES ENVIRONMENT "${_dock_test_env}")
+
+# **A TILE'S BADGE, MEASURED IN PIXELS.** The view is drawn offscreen and the chip's ink counted: a tile with a label
+# paints the badge's red in its top-right corner, and the same tile with no label paints none. This one compiles the
+# whole DockView, because the question is what it DRAWS.
+add_executable(dock_badge dock_badge.m "${CMAKE_CURRENT_SOURCE_DIR}/../src/DockView.m"
+	"${CMAKE_CURRENT_SOURCE_DIR}/../src/DockLayout.m")
+target_include_directories(dock_badge PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src")
+target_link_libraries(dock_badge PRIVATE AgoraApp::App m)
+add_test(NAME dock-badge COMMAND dock_badge)
+set_tests_properties(dock-badge PROPERTIES ENVIRONMENT "${_dock_test_env}")
