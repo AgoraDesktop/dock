@@ -66,10 +66,14 @@ click or a drop on it MEANS is still Workspace's (below).
 
 **CLICKING A TILE ALWAYS BRINGS THAT APPLICATION FORWARD, AND A PIN WITHOUT ONE IS LAUNCHED.** A running
 application is `-[NSRunningApplication activateWithOptions:]` — every window it has is raised in its level, **back to
-front, so its own window order is kept**, and the frontmost takes the keyboard. An application with nothing to raise —
-Workspace showing only its desktop — is ASKED to reopen instead and opens a file window, which is the Mac's behaviour
-for that click. A pinned tile whose application has quit is a LAUNCH of the file the pin remembered (Launch Services by
-identifier when the file has moved); the new process maps its window and takes the keyboard the way every launch does.
+front, so its own window order is kept**, and the frontmost takes the keyboard. An application with nothing to raise is
+MADE THE ACTIVE ONE first and then ASKED to reopen: Workspace showing only its desktop becomes the active application
+(its menus are already in the strip) and opens a file window, and an application with nothing but its menu bar — no
+window at all — becomes the active one and shows its menus, which is the minimum the Mac's answer has to include. That
+activation is a decision the shell states (`agora-shell` 13's `activate_application`, through the application's bar —
+a window a CLICK may never give the keyboard to), which is why it can move the keyboard where a click cannot. A pinned
+tile whose application has quit is a LAUNCH of the file the pin remembered (Launch Services by identifier when the file
+has moved); the new process maps its window and takes the keyboard the way every launch does.
 
 **THE DESKTOP IS NOT ONE OF THE TILES A PERSON ARRANGES, AND THAT IS A POLICY RATHER THAN A TASTE.** Workspace's tile
 is ALWAYS on the strip, ALWAYS first, and cannot be removed: `DockOrder` hoists it to index 0 in every list it answers,
