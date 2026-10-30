@@ -217,10 +217,11 @@ static NSString *const DockPinnedApplicationsKey = @"DockPinnedApplications";
  *
  * **AND A STORE THAT CANNOT BE WRITTEN COSTS THE PINS THEIR NEXT LAUNCH, NOT THE DOCK ITS SESSION.** The defaults store
  * lives under the installation's configuration root (`AGORA_CONFIG_ROOT`), and a development machine that has never set
- * one points it at `/Users/<name>/Configuration` — a directory under a root-owned `/Users` that no unprivileged process
- * can create. `-setObject:forKey:` RAISES there rather than answering NO, and an exception thrown out of a menu row's
- * action would take the Dock with it, so this is the one place in the Dock that catches: the pins stay in memory and in
- * the strip, the line says why they will not survive a relaunch, and nothing else is affected. */
+ * one writes `<home>/Configuration` under the host's own home directory — `/home/<name>` on Linux and the BSDs, which
+ * an unprivileged process cannot create for another account. `-setObject:forKey:` RAISES there rather than answering
+ * NO, and an exception thrown out of a menu row's action would take the Dock with it, so this is the one place in the
+ * Dock that catches: the pins stay in memory and in the strip, the line says why they will not survive a relaunch, and
+ * nothing else is affected. */
 - (void)writePinnedTiles
 {
 	NSMutableArray *plists = [NSMutableArray array];
