@@ -216,7 +216,7 @@ static NSString *const DockPinnedApplicationsKey = @"DockPinnedApplications";
  * `-setObject:forKey:` returns (see NSUserDefaults' own note), so there is no `-synchronize` to wait for.
  *
  * **AND A STORE THAT CANNOT BE WRITTEN COSTS THE PINS THEIR NEXT LAUNCH, NOT THE DOCK ITS SESSION.** The defaults store
- * lives under the installation's configuration root (`FNX_CONFIG_ROOT`), and a development machine that has never set
+ * lives under the installation's configuration root (`AGORA_CONFIG_ROOT`), and a development machine that has never set
  * one points it at `/Users/<name>/Configuration` — a directory under a root-owned `/Users` that no unprivileged process
  * can create. `-setObject:forKey:` RAISES there rather than answering NO, and an exception thrown out of a menu row's
  * action would take the Dock with it, so this is the one place in the Dock that catches: the pins stay in memory and in
@@ -238,7 +238,7 @@ static NSString *const DockPinnedApplicationsKey = @"DockPinnedApplications";
 		if (!reported) {
 			reported = YES;
 			fprintf(stderr, "dock: the pinned list cannot be written (%s) — it will last as long as this Dock "
-					"does; set FNX_CONFIG_ROOT to a writable directory to keep it\n",
+					"does; set AGORA_CONFIG_ROOT to a writable directory to keep it\n",
 				[[exception description] UTF8String]);
 		}
 	}
