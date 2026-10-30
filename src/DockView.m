@@ -1,5 +1,5 @@
 /*
- * DockView.m — the flat semitransparent band, the icons, and the one dot that means "this one has the keyboard".
+ * DockView.m — the flat semitransparent band, the icons, and the dot that means "this one is running".
  *
  * Copyright © 2026 Kyle J. Cardoza. MIT licensed.
  * SPDX-License-Identifier: MIT
@@ -10,32 +10,40 @@
  * desktop: the mockup shows one dark semitransparent band from the menu bar down, and a shape is what tells a
  * person which of the two Docks they are looking at.
  *
- * **THE DOTTED INDICATOR IS THE ACTIVE APPLICATION, NOT "RUNNING".** Every tile in this Dock is a running
- * application (the list it draws comes from `NSWorkspace -runningApplications`), so a Mac-style running dot on all
- * of them would carry no information. The one thing that changes is which of them has the keyboard, and that is
- * what the dot marks.
+ * **THE DOTTED INDICATOR IS "RUNNING", AND IT IS NOW THE MAC'S MEANING RATHER THAN THE OPPOSITE ONE.** It used to mark
+ * the application with the keyboard, on the argument that every tile was running by definition — which was true while
+ * the strip was a list of RUNNING APPLICATIONS and stopped being true when a tile could be pinned. A pinned
+ * application keeps its place while it is quit, so the strip now shows both kinds, and the dot is what tells them
+ * apart: lit for the ones with a process, dark for the place a quit application will come back to.
  */
 #import "DockView.h"
+#import "DockTile.h"
 
 #import <AppKit/NSBezierPath.h>
 #import <AppKit/NSColor.h>
 #import <AppKit/NSFont.h>
 #import <AppKit/NSImage.h>
 #import <AppKit/NSStringDrawing.h>
-#import <AppKit/NSRunningApplication.h>
+#import <AppKit/NSWindow.h>
 #import <AppKit/NSWorkspace.h>
 
 #import <Foundation/NSArray.h>
+#import <Foundation/NSDictionary.h>
 #import <Foundation/NSFileManager.h>
 #import <Foundation/NSString.h>
 
-/* **WHAT THE VIEW ASKS ITS CONTROLLER FOR, DECLARED WHERE IT IS CALLED.** The view reports a tile INDEX and the
- * controller decides what that means; declaring the two messages here keeps the view free of the controller's
- * header and the controller free of the view's — the same informal-protocol shape `NSStatusItem.m` uses for the
- * window door it calls. */
+#include <math.h>
+
+/* **WHAT THE VIEW ASKS ITS CONTROLLER FOR, DECLARED WHERE IT IS CALLED.** The view reports tile POSITIONS and the
+ * controller decides what they mean; declaring the messages here keeps the view free of the controller's header and
+ * the controller free of the view's — the same informal-protocol shape `NSStatusItem.m` uses for the window door it
+ * calls. */
 @interface NSObject (DockViewActions)
 - (void)activateTileAtIndex:(NSNumber *)index;
 - (void)showMenuForTileAtIndex:(NSNumber *)index withEvent:(id)event;
+- (void)moveTileFromIndex:(NSNumber *)from toIndex:(NSNumber *)to;
+- (void)commitTileOrder;
+- (void)cancelTileOrder;
 @end
 
 /* **THE DOT LIVES IN THE EIGHT-POINT MARGIN, WHICH IS THE ONLY PLACE IT CAN BE SEEN.** With a 48-point tile in a
@@ -45,30 +53,36 @@
 #define DOCK_INDICATOR_SIZE	4.0
 #define DOCK_INDICATOR_GAP	2.0
 
+/* **HOW FAR A HAND MAY SHAKE AND STILL BE CLICKING.** A press that moves less than this in both axes is a click — a
+ * person pressing a tile is not a person dragging one, and a two-point drift must not reorder the strip. Four points
+ * is about the width of the pointer's own arrow, which is the same threshold a Mac Dock uses in spirit. */
+#define DOCK_DRAG_SLOP	4.0
+
 @implementation DockView
 
 - (id)initWithFrame:(NSRect)frame
 {
 	if ((self = [super initWithFrame:frame]) != nil) {
-		_applications = [[NSArray alloc] init];
+		_tiles = [[NSArray alloc] init];
+		_pressIndex = (NSInteger)DockHitNone;
 	}
 	return self;
 }
 
 - (void)dealloc
 {
-	[_applications release];
+	[_tiles release];
 	[_badgeLabels release];
 	[_trashIcon release];
 	[super dealloc];
 }
 
-- (void)setApplications:(NSArray *)applications
+- (void)setTiles:(NSArray *)tiles
 {
-	NSArray *copy = [applications copy];
+	NSArray *copy = [tiles copy];
 
-	[_applications release];
-	_applications = copy;
+	[_tiles release];
+	_tiles = copy;
 	[self setNeedsDisplay:YES];
 }
 
@@ -84,7 +98,7 @@
 	_badgeLabels = copy;
 }
 
-- (void)drawBadgeForApplication:(NSRunningApplication *)application inTile:(NSRect)tile
+- (void)drawBadgeForIdentifier:(NSString *)identifier inTile:(NSRect)tile
 {
 	NSString *label;
 	NSDictionary *attributes;
@@ -92,10 +106,10 @@
 	CGFloat padding = 4.0;
 	NSRect chip;
 
-	if (_badgeLabels == nil || [application bundleIdentifier] == nil) {
+	if (_badgeLabels == nil || identifier == nil) {
 		return;
 	}
-	label = [_badgeLabels objectForKey:[application bundleIdentifier]];
+	label = [_badgeLabels objectForKey:identifier];
 	if (label == nil || [label length] == 0) {
 		return;
 	}
@@ -114,17 +128,6 @@
 	[[NSColor colorWithCalibratedRed:0.85 green:0.18 blue:0.16 alpha:0.95] setFill];
 	[[NSBezierPath bezierPathWithRoundedRect:chip xRadius:(NSHeight(chip) / 2.0) yRadius:(NSHeight(chip) / 2.0)] fill];
 	[label drawAtPoint:NSMakePoint(NSMinX(chip) + padding, NSMinY(chip) + padding) withAttributes:attributes];
-}
-
-- (void)setActiveApplication:(NSRunningApplication *)application
-{
-	if (_active == application) {
-		return;
-	}
-	[application retain];
-	[_active release];
-	_active = application;
-	[self setNeedsDisplay:YES];
 }
 
 - (void)setOrientation:(DockOrientation)orientation
@@ -170,11 +173,18 @@
  * the hit test
  * --------------------------------------------------------------------------------------------------- */
 
+/* HOW MANY TILES THE STRIP SHOWS: the ones it has, or as many as fit above the trash, whichever is fewer. */
+- (NSUInteger)shownTileCount
+{
+	NSUInteger count = [_tiles count];
+	NSUInteger fits = DockTilesThatFit([self bounds], DockDefaultMetrics);
+
+	return (count < fits) ? count : fits;
+}
+
 - (NSInteger)hitTestTileAtPoint:(NSPoint)point
 {
-	NSUInteger count = [_applications count];
-	NSUInteger fits = DockTilesThatFit([self bounds], DockDefaultMetrics);
-	NSUInteger shown = (count < fits) ? count : fits;
+	NSUInteger shown = [self shownTileCount];
 	NSUInteger i;
 
 	for (i = 0; i < shown; i++) {
@@ -188,17 +198,98 @@
 	return DockHitNone;
 }
 
+- (NSInteger)tileIndexForDropAtPoint:(NSPoint)point
+{
+	NSUInteger shown = [self shownTileCount];
+	NSRect first;
+	CGFloat pitch;
+	NSInteger index;
+
+	if (shown == 0) {
+		return DockHitNone;
+	}
+	/* **THE SLOTS ARE THE TILE RECTS AND THE AIR BETWEEN THEM**, so the answer is the layout's own arithmetic rather
+	 * than a second copy of it: the first tile's top edge is the top of slot 0, and every pitch below it is one more.
+	 * A point above the first tile is slot 0 and one below the last is the last slot, because a drag aims at a slot
+	 * and the strip has no place outside itself to aim at. */
+	first = DockTileRect([self bounds], _orientation, 0, DockDefaultMetrics);
+	pitch = DockDefaultMetrics.tile + DockDefaultMetrics.spacing;
+	index = (NSInteger)floor((NSMaxY(first) - point.y) / pitch);
+	if (index < 0) {
+		index = 0;
+	}
+	if (index > (NSInteger)shown - 1) {
+		index = (NSInteger)shown - 1;
+	}
+	return index;
+}
+
+/* ---------------------------------------------------------------------------------------------------
+ * the gesture: a press, then either a click or a drag
+ * --------------------------------------------------------------------------------------------------- */
+
 - (void)mouseDown:(id)event
 {
 	NSPoint where = [self convertPoint:[event locationInWindow] fromView:nil];
 	NSInteger hit = [self hitTestTileAtPoint:where];
 
-	if (hit >= 0 && _controller != nil) {
-		[_controller activateTileAtIndex:[NSNumber numberWithInteger:hit]];
+	/* **A NEW PRESS FORGETS THE LAST ONE, AND THAT IS THE RECOVERY PATH.** A release that never arrived — the hand
+	 * left the strip and came up over somebody else's window — would otherwise leave this view dragging a tile for
+	 * good, with the strip showing an order nobody committed. The next press on the Dock restores the order that is
+	 * written down, and starts its own gesture. */
+	if (_dragging && _controller != nil) {
+		[_controller cancelTileOrder];
 	}
+	_pressIndex = (hit >= 0) ? hit : (NSInteger)DockHitNone;
+	_pressPoint = where;
+	_dragging = NO;
 	/* THE TRASH DOES NOTHING YET, AND THAT IS THE W3/W7 BOUNDARY: its icon is the Dock's, but what a click MEANS
 	 * — a file window on `~/.Trash` — is Workspace's, and the contract between the two is §5.3 of the plan and is
-	 * still undecided. A drop on it is the same contract from the other side. */
+	 * still undecided. A drop on it is the same contract from the other side, which is why a drop there lands on the
+	 * last tile instead. */
+}
+
+- (void)mouseDragged:(id)event
+{
+	NSPoint where = [self convertPoint:[event locationInWindow] fromView:nil];
+	NSInteger target;
+
+	if (_pressIndex < 0 || _controller == nil) {
+		return;
+	}
+	if (!_dragging) {
+		if (fabs((double)(where.y - _pressPoint.y)) < DOCK_DRAG_SLOP &&
+		    fabs((double)(where.x - _pressPoint.x)) < DOCK_DRAG_SLOP) {
+			return;	/* still a click's worth of shake */
+		}
+		_dragging = YES;
+	}
+	target = [self tileIndexForDropAtPoint:where];
+	if (target < 0 || target == _pressIndex) {
+		return;
+	}
+	/* THE MOVE IS LIVE: the tile follows the pointer, and the release is what PINS and WRITES the order down. */
+	[_controller moveTileFromIndex:[NSNumber numberWithInteger:_pressIndex]
+			       toIndex:[NSNumber numberWithInteger:target]];
+	_pressIndex = target;
+}
+
+- (void)mouseUp:(id)event
+{
+	NSInteger index = _pressIndex;
+	BOOL dragged = _dragging;
+
+	(void)event;
+	_pressIndex = (NSInteger)DockHitNone;
+	_dragging = NO;
+	if (index < 0 || _controller == nil) {
+		return;
+	}
+	if (dragged) {
+		[_controller commitTileOrder];
+	} else {
+		[_controller activateTileAtIndex:[NSNumber numberWithInteger:index]];
+	}
 }
 
 - (void)rightMouseDown:(id)event
@@ -217,9 +308,7 @@
 
 - (void)drawRect:(NSRect)dirtyRect
 {
-	NSUInteger count = [_applications count];
-	NSUInteger fits = DockTilesThatFit([self bounds], DockDefaultMetrics);
-	NSUInteger shown = (count < fits) ? count : fits;
+	NSUInteger shown = [self shownTileCount];
 	NSUInteger i;
 
 	(void)dirtyRect;
@@ -231,27 +320,27 @@
 	[NSBezierPath fillRect:[self bounds]];
 
 	for (i = 0; i < shown; i++) {
-		NSRunningApplication *application = [_applications objectAtIndex:i];
-		NSRect tile = DockTileRect([self bounds], _orientation, i, DockDefaultMetrics);
-		NSImage *icon = [application icon];
+		DockTile *tile = [_tiles objectAtIndex:i];
+		NSRect rect = DockTileRect([self bounds], _orientation, i, DockDefaultMetrics);
+		NSImage *icon = [tile icon];
 
 		if (icon != nil) {
-			[icon drawInRect:tile];
+			[icon drawInRect:rect];
 		} else {
 			/* NO BUNDLE, NO ICON: a muted rounded square rather than nothing, so the tile is still a target a
 			 * person can see and click. */
-			NSBezierPath *placeholder = [NSBezierPath bezierPathWithRoundedRect:tile xRadius:9.0 yRadius:9.0];
+			NSBezierPath *placeholder = [NSBezierPath bezierPathWithRoundedRect:rect xRadius:9.0 yRadius:9.0];
 
 			[[NSColor colorWithCalibratedRed:0.35 green:0.38 blue:0.42 alpha:1.0] setFill];
 			[placeholder fill];
 		}
-		[self drawBadgeForApplication:application inTile:tile];
-		if (application == _active) {
+		[self drawBadgeForIdentifier:[tile identifier] inTile:rect];
+		if ([tile isRunning]) {
 			/* THE DOT ON THE INNER SIDE: right of the icon on a left dock, left of it on a right dock. */
 			CGFloat x = (_orientation == DockOrientationRight)
-					    ? tile.origin.x - DOCK_INDICATOR_GAP - DOCK_INDICATOR_SIZE
-					    : tile.origin.x + tile.size.width + DOCK_INDICATOR_GAP;
-			NSRect dot = NSMakeRect(x, NSMidY(tile) - (DOCK_INDICATOR_SIZE / 2.0),
+					    ? rect.origin.x - DOCK_INDICATOR_GAP - DOCK_INDICATOR_SIZE
+					    : rect.origin.x + rect.size.width + DOCK_INDICATOR_GAP;
+			NSRect dot = NSMakeRect(x, NSMidY(rect) - (DOCK_INDICATOR_SIZE / 2.0),
 						DOCK_INDICATOR_SIZE, DOCK_INDICATOR_SIZE);
 			NSBezierPath *indicator = [NSBezierPath bezierPathWithOvalInRect:dot];
 

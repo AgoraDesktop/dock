@@ -35,11 +35,23 @@ the window, so a Dock that crashes leaves no phantom strip.
 
 ## What a tile is
 
-One tile per application in `-[NSWorkspace runningApplications]`, with the Dock itself filtered out by its own bundle
-identifier (`io.github.agoradesktop.dock`). The icon comes from the application's bundle through Icon Services; an
-application with no bundle on disk gets a muted placeholder rather than nothing. **The dot marks the application with
-the keyboard** — every tile is running by definition, so a Mac-style "running" dot would carry no information, and the
-one thing that changes is which application is in front.
+**A TILE IS A PLACE ON THE STRIP, NOT A RUNNING PROCESS** — `DockTile`, which is why a tile can outlive the
+application it names. The strip shows the PINNED tiles first, in the user's order, then the applications from
+`-[NSWorkspace runningApplications]` that nobody pinned, in the order the workspace named them; the Dock itself is
+filtered out by its own bundle identifier (`io.github.agoradesktop.dock`). The icon comes from the application's bundle
+through Icon Services; an application with no bundle on disk gets a muted placeholder rather than nothing.
+
+**THE DOT MEANS "RUNNING", AND IT IS LIT FOR AS LONG AS THE PROCESS IS.** It used to mark the application with the
+keyboard, on the argument that every tile was running by definition — a pinned tile is the counter-example that
+argument needed. Now the strip holds both kinds, so the dot is what tells them apart: a pinned application keeps its
+place while it is quit, dark, and lights up when it comes back. The frontmost application is not marked at all, which
+is the Mac's answer too.
+
+**A PINNED TILE IS WRITTEN DOWN.** `DockOrder` does the list arithmetic (pins first, then the rest; a move; a pin; an
+unpin) and the Dock keeps the result under `DockPinnedApplications` in **its own defaults domain** — one dictionary per
+pin: identifier, title, and the application's file. That file is `DockTile`'s, so a pin from a previous run is a tile
+with an icon and a name and no application behind it until one appears. Anything that pins is a pasteboard-free
+gesture: `Keep in Dock` on the tile's menu, or a drag.
 
 **A BADGE IS THE APPLICATION'S OWN LABEL, DRAWN ON THE TILE'S OUTER CORNER.** The Dock does not compute it: the
 application sets `NSDockTile -badgeLabel`, the AppKit pushes it through `agora-shell` 8, and the Dock asks
@@ -52,11 +64,24 @@ and the lookup then answers a generic file (a piece of paper in the trash slot; 
 login the way the Mac does, and the Dock creates it if it is missing so that a Dock started alone is not wrong. What a
 click or a drop on it MEANS is still Workspace's (below).
 
-Click a tile: `-[NSRunningApplication activateWithOptions:]` — every window the application has is raised in its
-level, **back to front, so its own window order is kept**, and the frontmost takes the keyboard. An application with
-nothing to raise — Workspace showing only its desktop — is ASKED to reopen instead, and opens a file window, which is
-the Mac's behaviour for that click. Right-click: a menu with **Quit**, which is `-terminate`, a request that every
-window close, not a kill.
+**CLICKING A TILE ALWAYS BRINGS THAT APPLICATION FORWARD, AND A PIN WITHOUT ONE IS LAUNCHED.** A running
+application is `-[NSRunningApplication activateWithOptions:]` — every window it has is raised in its level, **back to
+front, so its own window order is kept**, and the frontmost takes the keyboard. An application with nothing to raise —
+Workspace showing only its desktop — is ASKED to reopen instead and opens a file window, which is the Mac's behaviour
+for that click. A pinned tile whose application has quit is a LAUNCH of the file the pin remembered (Launch Services by
+identifier when the file has moved); the new process maps its window and takes the keyboard the way every launch does.
+
+**AND THE GESTURE IS DECIDED BY THE RELEASE.** A press within a few points of where it started is a click; past that it
+is a DRAG, the tile follows the pointer to the slot it is over, and letting go **repositions it in the Dock's order and
+pins it** — `DockOrder -pinnedAfterMove:` keeps the pins that were there plus the one that was dragged. Dropping it
+between two pinned tiles puts it between them; a drag can never lose a pin, and a press that is interrupted (the hand
+leaves the strip and the release lands on somebody else's window) is undone by the next press, which restores the order
+that is written down.
+
+Right-click: a menu with **`Keep in Dock` / `Remove from Dock`** — the 10.6 wording for exactly this pair — and
+**Quit**, which is `-terminate`, a request that every window close, not a kill. A pinned application that is not
+running has no Quit to offer, and it has no application menu to ask either: there is no window for the question to
+reach, so the Dock's own rows are the whole menu.
 
 **AND THE MENU IS THE APPLICATION'S ABOVE THE DOCK'S, WHICH IS ONE PANEL WITH TWO OWNERS.** An application may offer
 items for its own tile — `-applicationDockMenu:` on its delegate, which is Apple's door — and those items appear ABOVE
@@ -80,9 +105,11 @@ and never a panel that fails to open. See `NSDockMenu.h` in `libagora-app` for b
 - **The trash does nothing on click, and takes no drops.** Its icon is here, but what a click or a drop MEANS is
   Workspace's (`WSTrash`) and the contract between the two is `WORKSPACE-PLAN.md` §5.3, still undecided. Cross-process
   drag does not exist in the window server yet, so a drop could not arrive.
-- **No badges, no bounce, no magnification, no pinned applications.** Badges need `NSDockTile`; bounce needs
-  `-requestUserAttention:` to reach the Dock; pinned applications need a persisted list and a Launch Services scan of
-  the Applications directory; magnification is a drawing decision nobody has made.
+- **No bounce, no magnification, and nothing that puts an application on the Dock besides a gesture.** Bounce needs
+  `-requestUserAttention:` to reach the Dock; magnification is a drawing decision nobody has made; and a pin can only be
+  made from a tile that exists — a drag, or the menu row — because an "add an application" panel would need a Launch
+  Services scan of the Applications directory that this tier has no door for yet. (A pinned application stays on the
+  strip with or without a process, which is the part that needed the list.)
 - **No overflow.** A strip holds eleven tiles at 720 points (`DockLayout`, tested); more applications than that are
   simply not shown.
 - **The session's wallpaper client appears as a tile**, with a placeholder icon, because it is an application with a

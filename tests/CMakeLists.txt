@@ -15,11 +15,23 @@ set(_dock_test_env "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:AgoraApp::App>")
 add_test(NAME dock-layout COMMAND dock_layout)
 set_tests_properties(dock-layout PROPERTIES ENVIRONMENT "${_dock_test_env}")
 
-# **A TILE'S BADGE, MEASURED IN PIXELS.** The view is drawn offscreen and the chip's ink counted: a tile with a label
-# paints the badge's red in its top-right corner, and the same tile with no label paints none. This one compiles the
-# whole DockView, because the question is what it DRAWS.
+# **THE ORDER AND THE TILES, WITH NO WINDOW.** Which tiles the strip shows and in what order is the part a person
+# notices and the part no screenshot can assert: a pin that vanishes when its application quits, a drag that does not
+# stick, an unpin that takes the wrong row. `dock_order` compiles the two units it is about — the list arithmetic and
+# the tile value — and drives them with identifiers.
+add_executable(dock_order dock_order.m "${CMAKE_CURRENT_SOURCE_DIR}/../src/DockOrder.m"
+	"${CMAKE_CURRENT_SOURCE_DIR}/../src/DockTile.m")
+target_include_directories(dock_order PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src")
+target_link_libraries(dock_order PRIVATE AgoraApp::App)
+add_test(NAME dock-order COMMAND dock_order)
+set_tests_properties(dock-order PROPERTIES ENVIRONMENT "${_dock_test_env}")
+
+# **A TILE'S BADGE AND ITS RUNNING DOT, MEASURED IN PIXELS.** The view is drawn offscreen and the ink counted: a tile
+# with a label paints the badge's red in its top-right corner, the same tile with no label paints none, a running
+# application's tile carries the white dot and a pinned tile whose application has quit carries none. This one compiles
+# the whole DockView, because the question is what it DRAWS.
 add_executable(dock_badge dock_badge.m "${CMAKE_CURRENT_SOURCE_DIR}/../src/DockView.m"
-	"${CMAKE_CURRENT_SOURCE_DIR}/../src/DockLayout.m")
+	"${CMAKE_CURRENT_SOURCE_DIR}/../src/DockLayout.m" "${CMAKE_CURRENT_SOURCE_DIR}/../src/DockTile.m")
 target_include_directories(dock_badge PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src")
 target_link_libraries(dock_badge PRIVATE AgoraApp::App m)
 add_test(NAME dock-badge COMMAND dock_badge)

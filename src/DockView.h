@@ -1,12 +1,18 @@
 /*
- * DockView.h — the strip's drawing and its hit test.
+ * DockView.h — the strip's drawing, its hit test, and the drag that reorders a tile.
  *
  * Copyright © 2026 Kyle J. Cardoza. MIT licensed.
  * SPDX-License-Identifier: MIT
  *
- * The view owns NO model: it is handed the applications to draw and it draws them, and a click is reported as an
- * INDEX rather than an application, so the controller stays the only place that knows what a tile means. That split
- * is what lets the layout be tested without a view and the view be tested without a compositor.
+ * The view owns NO model: it is handed the tiles to draw — `DockTile`, which is an application whether or not it is
+ * running — and it reports a gesture as an INDEX, so the controller stays the only place that knows what a tile
+ * means, which application is behind it and which order is written down. That split is what lets the layout and the
+ * order be tested without a view and the view be tested without a compositor.
+ *
+ * **A PRESS IS NOT YET A CLICK.** The button going down starts a press, and what the gesture MEANS is decided by the
+ * release: within a few points of where it started it is a click and the tile is invoked; past that it is a drag, the
+ * tile is moved to wherever the pointer is over, and the release commits the order (the controller pins it). The view
+ * does the arithmetic and tells the controller; the controller asks nobody.
  */
 #ifndef DOCK_VIEW_H
 #define DOCK_VIEW_H
@@ -16,21 +22,23 @@
 #import "DockLayout.h"
 
 @class NSArray;
-@class NSRunningApplication;
+@class NSDictionary;
+@class NSImage;
 
 @interface DockView : NSView
 {
 @private
-	NSArray *_applications;			/* NSRunningApplication, in the order the workspace gave them */
-	NSRunningApplication *_active;		/* the one with the keyboard, marked with the indicator */
+	NSArray *_tiles;			/* DockTile, in the order the Dock decided */
 	NSDictionary *_badgeLabels;		/* bundle identifier -> the label its tile shows (NSDockTile) */
 	DockOrientation _orientation;
 	NSImage *_trashIcon;			/* resolved once from the trash directory */
 	id _controller;				/* NOT retained: the controller owns this view */
+	NSInteger _pressIndex;			/* the tile the button went down on, or DockHitNone */
+	NSPoint _pressPoint;			/* where it went down: the drag's threshold is measured from here */
+	BOOL _dragging;				/* the press became a drag, so the release moves rather than invokes */
 }
 
-- (void)setApplications:(NSArray *)applications;
-- (void)setActiveApplication:(NSRunningApplication *)application;
+- (void)setTiles:(NSArray *)tiles;
 /* **THE BADGES THE APPLICATIONS PUBLISHED**, keyed by bundle identifier; nil or empty clears them. */
 - (void)setBadgeLabels:(NSDictionary *)labels;
 - (void)setOrientation:(DockOrientation)orientation;
@@ -44,6 +52,12 @@ typedef enum {
 } DockHit;
 
 - (NSInteger)hitTestTileAtPoint:(NSPoint)point;
+
+/* **WHERE A DROPPED TILE WOULD GO**, which is a different question from what is under the pointer: a drag aims at a
+ * SLOT. A point above the first tile is slot 0, a point below the last shown one is the last slot, and a point in the
+ * trash or past it is the last slot too — the trash is not a drop target yet, and a drag that ends on it must not
+ * leave the tile nowhere. Answers DockHitNone only when there is no tile to move. */
+- (NSInteger)tileIndexForDropAtPoint:(NSPoint)point;
 
 @end
 

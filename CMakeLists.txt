@@ -26,6 +26,8 @@ add_executable(Dock
     src/main.m
     src/DockController.m
     src/DockLayout.m
+    src/DockOrder.m
+    src/DockTile.m
     src/DockView.m)
 
 target_include_directories(Dock PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
