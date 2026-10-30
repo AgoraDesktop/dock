@@ -13,6 +13,10 @@
  *
  * THE TILES' OWN PERSISTENCE IS HERE TOO, because the pinned list is a FILE (a defaults plist that outlives the
  * build) and a round trip is the only thing that says so.
+ *
+ * AND THE DESKTOP'S THREE LOCKS: it appears once, it is FIRST, and no door in this file will remove it. Those are
+ * asserted from the far side — a list that puts it last, a list that names it twice, and the "Remove from Dock" path
+ * that the menu never offers for it.
  */
 #import "DockOrder.h"
 #import "DockTile.h"
@@ -66,9 +70,11 @@ static NSArray *S(NSString *one, NSString *two, NSString *three, NSString *four,
 int main(void)
 {
 	@autoreleasepool {
-		NSString *a = @"io.github.agoradesktop.workspace";
-		NSString *b = @"io.github.agoradesktop.forge";
-		NSString *c = @"io.github.agoradesktop.dock";
+		/* THREE APPLICATIONS THAT ARE NOT THE DESKTOP: Workspace has a rule of its own (4b below), and a fixture
+		 * that happened to BE Workspace would be testing that rule by accident in every case above it. */
+		NSString *a = @"io.github.agoradesktop.forge";
+		NSString *b = @"io.github.agoradesktop.notes";
+		NSString *c = @"io.github.agoradesktop.terminal";
 		NSArray *none = [NSArray array];
 
 		printf("dock_order\n");
@@ -121,6 +127,31 @@ int main(void)
 		      "\"Remove from Dock\" takes it out of the list and leaves the rest in order");
 		check(sameStrings(DockOrderPinnedRemoving(S(a, nil, nil, nil, nil), c), S(a, nil, nil, nil, nil)),
 		      "and removing something that is not there changes nothing");
+
+		/* ---- 4b. the desktop: always there, always first, never removed ---- */
+		{
+			NSString *desktop = DockDesktopIdentifier;
+
+			check(sameStrings(DockOrderIdentifiers(S(b, nil, nil, nil, nil), S(c, a, desktop, nil, nil)),
+					  S(desktop, b, c, a, nil)),
+			      "the desktop is first even when the running list names it last");
+			check(sameStrings(DockOrderIdentifiers(S(b, desktop, c, nil, nil), S(a, nil, nil, nil, nil)),
+					  S(desktop, b, c, a, nil)),
+			      "and first even when the pinned list put it in the middle");
+			check(sameStrings(DockOrderIdentifiers(S(desktop, desktop, nil, nil, nil), S(desktop, a, nil, nil, nil)),
+					  S(desktop, a, nil, nil, nil)),
+			      "a list that names it twice is one tile");
+			check(sameStrings(DockOrderPinnedAfterMove(S(desktop, b, nil, nil, nil), S(b, desktop, nil, nil, nil),
+								  b),
+					  S(desktop, b, nil, nil, nil)),
+			      "a drag cannot put anything above it");
+			check(sameStrings(DockOrderPinnedRemoving(S(desktop, b, nil, nil, nil), desktop),
+					  S(desktop, b, nil, nil, nil)),
+			      "and \"Remove from Dock\" cannot take it away");
+			check(sameStrings(DockOrderPinnedAdding(S(b, nil, nil, nil, nil), desktop),
+					  S(desktop, b, nil, nil, nil)),
+			      "while pinning ANYTHING, including the desktop itself, leaves it at the top");
+		}
 
 		/* ---- 5. a tile survives the process, which is what makes a pin a place ---- */
 		{

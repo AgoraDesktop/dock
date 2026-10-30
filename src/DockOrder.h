@@ -28,6 +28,14 @@
 #import <Foundation/NSArray.h>
 #import <Foundation/NSString.h>
 
+/* **THE DESKTOP'S BUNDLE IDENTIFIER: THE ONE APPLICATION THE DOCK HAS A POLICY ABOUT.** Agora's desktop is Workspace,
+ * and the Dock is its furniture — so the desktop's tile is the one place on the strip that is not the user's to
+ * arrange: it is always there, it is always FIRST (it is the thing the others are arranged around), and nothing in
+ * this file will remove it. The policy is here rather than in the controller because it is a property of the ORDER,
+ * and every door below enforces it so that no path — a drag, a menu row, a hand-edited defaults file — can produce a
+ * strip without it at the top. */
+extern NSString *const DockDesktopIdentifier;
+
 /* **THE DISPLAYED ORDER.** Both inputs are arrays of bundle identifiers; the pinned ones keep their order and come
  * first, the running ones fill in behind, and an identifier named twice appears once. Returns an autoreleased array
  * of the identifiers that appear in either input, in that order. */

@@ -34,12 +34,14 @@
 #import <AppKit/NSMenuItem.h>
 #import <AppKit/NSRunningApplication.h>
 #import <AppKit/NSScreen.h>
+#import <AppKit/NSView.h>
 #import <AppKit/NSStatusBar.h>
 #import <AppKit/NSWorkspace.h>
 
 #import <Foundation/NSArray.h>
 #import <Foundation/NSBundle.h>
 #import <Foundation/NSDictionary.h>
+#import <Foundation/NSNotification.h>
 #import <Foundation/NSString.h>
 #import <Foundation/NSUserDefaults.h>
 
@@ -207,6 +209,7 @@ static NSString *const DockPinnedApplicationsKey = @"DockPinnedApplications";
 			[_pinned addObject:tile];
 		}
 	}
+	[self ensureDesktopPinned];
 }
 
 /* AND WRITTEN WHENEVER IT CHANGES — a pin, an unpin, the release of a drag. Every write reaches the disk before
@@ -238,6 +241,58 @@ static NSString *const DockPinnedApplicationsKey = @"DockPinnedApplications";
 					"does; set FNX_CONFIG_ROOT to a writable directory to keep it\n",
 				[[exception description] UTF8String]);
 		}
+	}
+}
+
+/* **THE DESKTOP'S TILE, MADE FROM LAUNCH SERVICES BECAUSE THAT IS THE ONLY NAME IT HAS WHEN IT IS NOT RUNNING.** A
+ * pinned tile is written down with its file; the desktop's may not be there at all on a first launch, and its bundle
+ * lives in a build tree in a development session (`AGORA_APPLICATIONS` is what tells Launch Services where). The name
+ * comes from the bundle, and the tile falls back to the identifier's last component when nothing resolves — a Dock
+ * that says "workspace" is still better than one with no desktop in it. */
+- (DockTile *)desktopTile
+{
+	NSURL *url = [[NSWorkspace sharedWorkspace] URLForApplicationWithBundleIdentifier:DockDesktopIdentifier];
+	NSString *title = nil;
+
+	if (url != nil) {
+		NSBundle *bundle = [NSBundle bundleWithPath:[url path]];
+
+		title = [bundle objectForInfoDictionaryKey:@"CFBundleName"];
+	}
+	if ([title length] == 0) {
+		title = @"Workspace";
+	}
+	return [DockTile tileWithIdentifier:DockDesktopIdentifier title:title bundleURL:url];
+}
+
+- (BOOL)isDesktopTile:(DockTile *)tile
+{
+	return [[tile identifier] isEqualToString:DockDesktopIdentifier];
+}
+
+/* **AND IT IS ALWAYS PINNED AND ALWAYS FIRST.** `DockOrder` keeps it at the top of the list it is given; this keeps it
+ * IN the list, which is the half a hand-edited defaults file (or a build from before the desktop was special) can get
+ * wrong. Called wherever the pinned list is loaded or rebuilt, which is the only way it can change. */
+- (void)ensureDesktopPinned
+{
+	NSUInteger i;
+	DockTile *desktop = nil;
+
+	for (i = 0; i < [_pinned count]; i++) {
+		if ([self isDesktopTile:[_pinned objectAtIndex:i]]) {
+			desktop = [_pinned objectAtIndex:i];
+			[desktop retain];
+			[_pinned removeObjectAtIndex:i];
+			break;
+		}
+	}
+	if (desktop == nil) {
+		desktop = [[self desktopTile] retain];
+	}
+	if (desktop != nil) {
+		[desktop setPinned:YES];
+		[_pinned insertObject:desktop atIndex:0];
+		[desktop release];
 	}
 }
 
@@ -303,6 +358,7 @@ static NSString *const DockPinnedApplicationsKey = @"DockPinnedApplications";
 	}
 	[_pinned release];
 	_pinned = [pinned mutableCopy];
+	[self ensureDesktopPinned];
 }
 
 - (void)refresh
@@ -316,6 +372,27 @@ static NSString *const DockPinnedApplicationsKey = @"DockPinnedApplications";
 	NSArray *order;
 	NSUInteger i;
 
+	/* **A RESTART ENDS BY STARTING THE DESKTOP AGAIN, AND ITS OWN SNAPSHOT IS THE PROOF THAT IT WENT.** `-terminate` is
+	 * a REQUEST, so the Dock cannot relaunch on the back of having asked: it waits for a snapshot that no longer names
+	 * the identifier, which is the same fact every other tile is drawn from. The launch is issued HERE, at the top of a
+	 * refresh, so the refresh after it draws the new process's tile rather than the old one. */
+	if (_restartPending) {
+		BOOL gone = YES;
+
+		for (i = 0; i < [running count]; i++) {
+			if ([[[running objectAtIndex:i] bundleIdentifier] isEqualToString:DockDesktopIdentifier]) {
+				gone = NO;
+				break;
+			}
+		}
+		if (gone) {
+			_restartPending = NO;
+			if (getenv("AGORA_DOCK_DIAG") != NULL) {
+				fprintf(stderr, "dock: the desktop has gone; starting it again\n");
+			}
+			[self launchTile:[self tileWithIdentifier:DockDesktopIdentifier]];
+		}
+	}
 	/* A LAUNCH INTERRUPTS A DRAG RATHER THAN BEING REORDERED BY IT: the snapshot is the truth about which
 	 * applications exist, and a half-finished drag is not a truth about anything. The order a cancelled drag goes
 	 * back to is dropped here for the same reason. */
@@ -388,7 +465,25 @@ static NSString *const DockPinnedApplicationsKey = @"DockPinnedApplications";
 
 - (void)applicationsChanged:(id)notification
 {
-	(void)notification;
+	/* **A RESTART'S SECOND HALF IS COMPLETED HERE, BECAUSE THIS IS THE ONE MOMENT THE FACT IS KNOWN.** `NSWorkspace`
+	 * posts `DidTerminate` BEFORE it drops the application from `-runningApplications` — deliberately, so a handler can
+	 * still read what went — which means a refresh inside that callback still sees the desktop as running. MEASURED: the
+	 * relaunch never happened and the Dock waited for a snapshot that had already arrived, while its own tile still said
+	 * "running" for a process that was gone. So the question "did the application I asked to go actually go" is
+	 * answered by the NOTIFICATION's application rather than by the list. `-refresh` keeps the same test as a fallback:
+	 * a notification this process missed still completes on the next snapshot, because a pending restart is a fact about
+	 * the Dock and not about one callback. */
+	if (_restartPending) {
+		NSRunningApplication *gone = [[notification userInfo] objectForKey:NSWorkspaceApplicationKey];
+
+		if (gone != nil && [[gone bundleIdentifier] isEqualToString:DockDesktopIdentifier]) {
+			_restartPending = NO;
+			if (getenv("AGORA_DOCK_DIAG") != NULL) {
+				fprintf(stderr, "dock: the desktop has gone; starting it again\n");
+			}
+			[self launchTile:[self tileWithIdentifier:DockDesktopIdentifier]];
+		}
+	}
 	[self refresh];
 }
 
@@ -416,20 +511,24 @@ static NSString *const DockPinnedApplicationsKey = @"DockPinnedApplications";
 		return;
 	}
 	/* **A PIN WITH NOTHING BEHIND IT IS A LAUNCH**, and the click means the same thing either way: the application
-	 * comes forward. The file remembered with the pin is asked for first, because it is what the person pinned; a
-	 * pin whose bundle has moved asks Launch Services by identifier, which is the only name the two sides share. The
-	 * new process maps its window and takes the keyboard the way every launch does — the Dock does not need to
-	 * activate it afterwards, and could not: on the pass after the spawn there is nothing to activate yet. */
-	if ([tile bundleURL] == nil && [[tile identifier] length] > 0) {
-		NSURL *found = [[NSWorkspace sharedWorkspace] URLForApplicationWithBundleIdentifier:[tile identifier]];
+	 * comes forward. */
+	[self launchTile:tile];
+}
 
-		if (found != nil) {
-			[[NSWorkspace sharedWorkspace] openURL:found];
-			return;
-		}
+/* **THE ONE LAUNCH PATH, BECAUSE A PIN'S CLICK AND THE DESKTOP'S RESTART MEAN THE SAME THING TO LAUNCH SERVICES.** The
+ * file remembered with the tile is asked for first, because it is what the person pinned; a bundle that has moved asks
+ * Launch Services by identifier, which is the only name the two sides share. The new process maps its window and takes
+ * the keyboard the way every launch does — the Dock does not need to activate it afterwards, and could not: on the pass
+ * after the spawn there is nothing to activate yet. */
+- (void)launchTile:(DockTile *)tile
+{
+	NSURL *url = (tile != nil) ? [tile bundleURL] : nil;
+
+	if (url == nil && [[tile identifier] length] > 0) {
+		url = [[NSWorkspace sharedWorkspace] URLForApplicationWithBundleIdentifier:[tile identifier]];
 	}
-	if ([tile bundleURL] != nil) {
-		[[NSWorkspace sharedWorkspace] openURL:[tile bundleURL]];
+	if (url != nil) {
+		[[NSWorkspace sharedWorkspace] openURL:url];
 	}
 }
 
@@ -451,6 +550,11 @@ static NSString *const DockPinnedApplicationsKey = @"DockPinnedApplications";
 	/* A TILE THAT CANNOT BE PINNED CANNOT BE DRAGGED EITHER: the drag's whole outcome is a written-down order, and
 	 * there is no identifier to write. Its place after the ordered tiles is the only one it has. */
 	if (![tile canBePinned]) {
+		return;
+	}
+	/* AND THE DESKTOP HAS NOWHERE TO GO: it is the top of the strip by rule, so a drag of it would be undone by the
+	 * next refresh — refusing it here is the honest answer rather than a tile that springs back. */
+	if ([self isDesktopTile:tile]) {
 		return;
 	}
 	if (_orderBeforeDrag == nil) {
@@ -551,27 +655,49 @@ static NSString *const DockPinnedApplicationsKey = @"DockPinnedApplications";
 		}
 	}
 
-	/* **THE PIN ROW, IN THE MAC'S OWN WORDS.** `Keep in Dock` / `Remove from Dock` is what a 10.6 Dock said for the
-	 * two halves of this, and the vocabulary inside this tree is "pinned" — the row is the gesture, the defaults key
-	 * is the fact. A process with no bundle identifier has nothing to write down, so its row is disabled rather than
-	 * absent: the menu keeps its shape and says why. */
-	title = [tile isPinned] ? @"Remove from Dock" : @"Keep in Dock";
-	item = [[NSMenuItem alloc] initWithTitle:title action:@selector(togglePinFromMenu:) keyEquivalent:@""];
-	[item setTarget:self];
-	[item setEnabled:[tile canBePinned]];
-	[menu addItem:item];
-	[item release];
-
-	/* AND QUIT, WHICH ONLY A RUNNING APPLICATION CAN ANSWER. */
-	if ([tile isRunning]) {
-		[menu addItem:[NSMenuItem separatorItem]];
-		title = [NSString stringWithFormat:@"Quit %@", [tile title]];
-		item = [[NSMenuItem alloc] initWithTitle:title action:@selector(quitFromMenu:) keyEquivalent:@""];
+	if ([self isDesktopTile:tile]) {
+		/* **THE DESKTOP'S MENU IS ONE ROW, AND IT IS NOT QUIT.** Workspace's tile cannot be pinned or unpinned (there
+		 * is nothing to decide: it is always there and always first), and quitting it would leave the desktop without
+		 * the thing the Dock is furniture for. Replacing it is the repair a person actually wants — the Dock asks it to
+		 * go and starts it again as soon as its own snapshot says it has. */
+		if ([menu numberOfItems] > 0) {
+			[menu addItem:[NSMenuItem separatorItem]];
+		}
+		title = [NSString stringWithFormat:@"Restart %@", [tile title]];
+		item = [[NSMenuItem alloc] initWithTitle:title action:@selector(restartFromMenu:) keyEquivalent:@""];
 		[item setTarget:self];
 		[menu addItem:item];
 		[item release];
+	} else {
+		/* **THE PIN ROW, IN THE MAC'S OWN WORDS.** `Keep in Dock` / `Remove from Dock` is what a 10.6 Dock said for
+		 * the two halves of this, and the vocabulary inside this tree is "pinned" — the row is the gesture, the
+		 * defaults key is the fact. A process with no bundle identifier has nothing to write down, so its row is
+		 * disabled rather than absent: the menu keeps its shape and says why. */
+		title = [tile isPinned] ? @"Remove from Dock" : @"Keep in Dock";
+		item = [[NSMenuItem alloc] initWithTitle:title action:@selector(togglePinFromMenu:) keyEquivalent:@""];
+		[item setTarget:self];
+		[item setEnabled:[tile canBePinned]];
+		[menu addItem:item];
+		[item release];
+
+		/* AND QUIT, WHICH ONLY A RUNNING APPLICATION CAN ANSWER. */
+		if ([tile isRunning]) {
+			[menu addItem:[NSMenuItem separatorItem]];
+			title = [NSString stringWithFormat:@"Quit %@", [tile title]];
+			item = [[NSMenuItem alloc] initWithTitle:title action:@selector(quitFromMenu:) keyEquivalent:@""];
+			[item setTarget:self];
+			[menu addItem:item];
+			[item release];
+		}
 	}
+	/* **AND THE CLICK THAT DISMISSES IT IS THE MENU'S, NOT THE WINDOW UNDER IT.** A menu is a pop-up: the click that
+	 * ends one is not a click on whatever it landed over. Without something to catch that click it lands on the
+	 * desktop, or on another application's window, and the window server gives THAT window the keyboard — so a person
+	 * dismissing a Dock menu watches the menu bar change application. The catcher is an invisible, non-activatable
+	 * window over the screen for exactly the length of the session (see `-showMenuCatcher`). */
+	[self showMenuCatcher];
 	[NSMenu popUpContextMenu:menu withEvent:event forView:_view];
+	[_catcher orderOut:nil];
 	[menu release];
 }
 
@@ -622,6 +748,9 @@ static NSString *const DockPinnedApplicationsKey = @"DockPinnedApplications";
 	if (_menuTile == nil || ![_menuTile canBePinned]) {
 		return;
 	}
+	if ([self isDesktopTile:_menuTile]) {
+		return;	/* the row is not offered for the desktop, and the door refuses it if a caller asks anyway */
+	}
 	if ([_menuTile isPinned]) {
 		pinned = DockOrderPinnedRemoving([self pinnedIdentifiers], [_menuTile identifier]);
 	} else {
@@ -630,6 +759,55 @@ static NSString *const DockPinnedApplicationsKey = @"DockPinnedApplications";
 	[self setPinnedIdentifiers:pinned];
 	[self writePinnedTiles];
 	[self refresh];
+}
+
+/* **THE DESKTOP'S ONE ROW: ASK IT TO GO, AND START IT AGAIN WHEN IT HAS.** The quit is a request (`-terminate`), so
+ * what follows is not a `SIGKILL` and a spawn but a state machine with two facts in it: the request was made, and the
+ * workspace's own snapshot no longer names it — see `-refresh`, which is where the second half runs. A desktop that is
+ * not running has nothing to replace, so the row is a start. */
+- (void)restartFromMenu:(id)sender
+{
+	(void)sender;
+	if (_menuTile == nil) {
+		return;
+	}
+	if (![_menuTile isRunning]) {
+		[self launchTile:_menuTile];
+		return;
+	}
+	_restartPending = YES;
+	if (getenv("AGORA_DOCK_DIAG") != NULL) {
+		fprintf(stderr, "dock: restart asked of %s; waiting for its snapshot to say it has gone\n",
+			[[_menuTile identifier] UTF8String]);
+	}
+	[[_menuTile application] terminate];
+}
+
+/* **AN INVISIBLE WINDOW OVER THE SCREEN, FOR THE LENGTH OF A TILE'S MENU.** It is the click catcher described at the
+ * call site: transparent, at `NSMainMenuWindowLevel - 1` (above the desktop, every ordinary window and the Dock's own
+ * strip; below the menu bar and below the menu, which is at the pop-up level), and NON-ACTIVATABLE, so a press that
+ * lands on it gives the keyboard to nobody. The menu's session pulls the application's events, sees a press addressed
+ * to another window, and dismisses — which is `NSMenu`'s rule, not this class's. Made once and reused; a window that
+ * is ordered out maps nothing. */
+- (void)showMenuCatcher
+{
+	if (_catcher == nil) {
+		NSRect frame = [[NSScreen mainScreen] frame];
+
+		_catcher = [[NSWindow alloc] initWithContentRect:frame
+						       styleMask:NSBorderlessWindowMask
+							 backing:NSBackingStoreBuffered
+							   defer:NO];
+		[_catcher setOpaque:NO];
+		[_catcher setBackgroundColor:[NSColor clearColor]];
+		[_catcher setLevel:(NSInteger)NSMainMenuWindowLevel - 1];
+		[_catcher setReleasedWhenClosed:NO];
+		[_catcher setCollectionBehavior:(NSWindowCollectionBehaviorStationary | NSWindowCollectionBehaviorIgnoresCycle)];
+		[_catcher cg_setActivatable:NO];
+		[_catcher setContentView:[[[NSView alloc] initWithFrame:NSMakeRect(0.0, 0.0, frame.size.width,
+										 frame.size.height)] autorelease]];
+	}
+	[_catcher orderFront:nil];
 }
 
 - (void)quitFromMenu:(id)sender

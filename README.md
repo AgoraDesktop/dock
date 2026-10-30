@@ -71,6 +71,16 @@ Workspace showing only its desktop — is ASKED to reopen instead and opens a fi
 for that click. A pinned tile whose application has quit is a LAUNCH of the file the pin remembered (Launch Services by
 identifier when the file has moved); the new process maps its window and takes the keyboard the way every launch does.
 
+**THE DESKTOP IS NOT ONE OF THE TILES A PERSON ARRANGES, AND THAT IS A POLICY RATHER THAN A TASTE.** Workspace's tile
+is ALWAYS on the strip, ALWAYS first, and cannot be removed: `DockOrder` hoists it to index 0 in every list it answers,
+refuses to remove it, and the controller re-adds it to the pinned list whenever that list is loaded or rebuilt (so a
+defaults file that has lost it, or an older build that never wrote it, gets it back). A drag of it is refused rather
+than undone — the strip has no place above the top. Its menu has no `Keep in Dock`/`Remove from Dock` (there is
+nothing to decide) and no `Quit` (ending the desktop is not a repair), but a **`Restart`**, which asks the application
+to terminate through `quit_window` — `agora-shell` 12 — and starts it again as soon as its own snapshot says it has
+gone. That is why the door exists at all: `close_window` asks each WINDOW and leaves the rest to the application, and
+Workspace's windows are furniture, so closing them changes nothing about the process.
+
 **AND THE GESTURE IS DECIDED BY THE RELEASE.** A press within a few points of where it started is a click; past that it
 is a DRAG, the tile follows the pointer to the slot it is over, and letting go **repositions it in the Dock's order and
 pins it** — `DockOrder -pinnedAfterMove:` keeps the pins that were there plus the one that was dragged. Dropping it
@@ -79,9 +89,18 @@ leaves the strip and the release lands on somebody else's window) is undone by t
 that is written down.
 
 Right-click: a menu with **`Keep in Dock` / `Remove from Dock`** — the 10.6 wording for exactly this pair — and
-**Quit**, which is `-terminate`, a request that every window close, not a kill. A pinned application that is not
-running has no Quit to offer, and it has no application menu to ask either: there is no window for the question to
-reach, so the Dock's own rows are the whole menu.
+**Quit**, which is `NSRunningApplication -terminate`: the application is asked to terminate (a request, not a kill),
+and a compositor older than `agora-shell` 12 is asked to close the application's windows instead. A pinned
+application that is not running has no Quit to offer, and it has no application menu to ask either: there is no window
+for the question to reach, so the Dock's own rows are the whole menu.
+
+**AND A CLICK OUTSIDE A TILE'S MENU IS THE MENU'S CLICK, NOT THE WINDOW'S UNDER IT.** A menu is a pop-up: the click
+that dismisses it must not be a click on whatever it landed over, or a person dismissing a tile's menu watches the menu
+bar change application — the desktop takes the keyboard for a click meant to say "never mind". So while a tile's menu
+is open the Dock puts up an invisible, NON-ACTIVATABLE window over the screen (`-showMenuCatcher`: transparent, at
+`NSMainMenuWindowLevel - 1`, below the bar and below the menu itself). The press lands there, the menu's session sees a
+press addressed to another window and dismisses, and the keyboard stays where it was — no application is activated by
+saying no.
 
 **AND THE MENU IS THE APPLICATION'S ABOVE THE DOCK'S, WHICH IS ONE PANEL WITH TWO OWNERS.** An application may offer
 items for its own tile — `-applicationDockMenu:` on its delegate, which is Apple's door — and those items appear ABOVE

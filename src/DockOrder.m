@@ -12,6 +12,44 @@
 
 #import <Foundation/NSArray.h>
 
+NSString *const DockDesktopIdentifier = @"io.github.agoradesktop.workspace";
+
+/* **THE DESKTOP GOES TO THE TOP, AND THAT IS APPLIED BY EVERY DOOR BELOW.** One helper rather than a rule each of them
+ * remembers: an array that names the desktop anywhere (or twice) comes back with ONE copy of it at index 0 and the
+ * rest in their order. */
+static void fn_desktop_first(NSMutableArray *identifiers)
+{
+	NSUInteger i;
+	BOOL found = NO;
+
+	/* ONE COPY: a list that names the desktop twice is a list with a mistake in it, not two tiles. */
+	for (i = 0; i < [identifiers count]; ) {
+		if ([[identifiers objectAtIndex:i] isEqualToString:DockDesktopIdentifier]) {
+			if (found) {
+				[identifiers removeObjectAtIndex:i];
+				continue;
+			}
+			found = YES;
+		}
+		i++;
+	}
+	if (!found) {
+		return;
+	}
+	for (i = 0; i < [identifiers count]; i++) {
+		if ([[identifiers objectAtIndex:i] isEqualToString:DockDesktopIdentifier]) {
+			break;
+		}
+	}
+	if (i > 0 && i < [identifiers count]) {
+		id desktop = [[identifiers objectAtIndex:i] retain];
+
+		[identifiers removeObjectAtIndex:i];
+		[identifiers insertObject:desktop atIndex:0];
+		[desktop release];
+	}
+}
+
 /* AN IDENTIFIER IS THE DOCK'S NAME FOR AN APPLICATION: `-[NSRunningApplication bundleIdentifier]`, which the window
  * list carries, so the tiles and the pinned list name the same thing. A nil or empty one is skipped rather than
  * stored: a tile that cannot be named cannot be pinned, clicked twice or matched to its own application. */
@@ -39,6 +77,7 @@ NSArray *DockOrderIdentifiers(NSArray *pinnedIdentifiers, NSArray *runningIdenti
 			[order addObject:identifier];
 		}
 	}
+	fn_desktop_first(order);
 	return order;
 }
 
@@ -81,6 +120,7 @@ NSArray *DockOrderPinnedAfterMove(NSArray *pinnedIdentifiers, NSArray *displayed
 	if (fn_usable_identifier(dragged) && ![pinned containsObject:dragged]) {
 		[pinned addObject:dragged];
 	}
+	fn_desktop_first(pinned);
 	return pinned;
 }
 
@@ -89,9 +129,11 @@ NSArray *DockOrderPinnedAdding(NSArray *pinnedIdentifiers, NSString *identifier)
 	NSMutableArray *pinned = [NSMutableArray arrayWithArray:pinnedIdentifiers];
 
 	if (!fn_usable_identifier(identifier) || [pinned containsObject:identifier]) {
+		fn_desktop_first(pinned);
 		return pinned;
 	}
 	[pinned addObject:identifier];
+	fn_desktop_first(pinned);
 	return pinned;
 }
 
@@ -99,8 +141,12 @@ NSArray *DockOrderPinnedRemoving(NSArray *pinnedIdentifiers, NSString *identifie
 {
 	NSMutableArray *pinned = [NSMutableArray arrayWithArray:pinnedIdentifiers];
 
-	if (fn_usable_identifier(identifier)) {
+	/* **THE DESKTOP CANNOT BE REMOVED, AND A DOOR THAT PRETENDED TO TRY WOULD BE THE ONE PATH THAT MADE A DOCK WITHOUT
+	 * IT.** The menu does not offer the row for it and a drag cannot move it, so this is the third lock — the cheap
+	 * one, and the one a future caller will still be held by. */
+	if (fn_usable_identifier(identifier) && ![identifier isEqualToString:DockDesktopIdentifier]) {
 		[pinned removeObject:identifier];
 	}
+	fn_desktop_first(pinned);
 	return pinned;
 }
