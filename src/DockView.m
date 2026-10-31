@@ -389,8 +389,15 @@ static NSArray *fn_application_paths(id <NSDraggingInfo> info)
 	NSInteger index = _externalDropIndex;
 	BOOL pinned = NO;
 
+	if (getenv("AGORA_DRAG_DIAG") != NULL) {
+		fprintf(stderr, "  DIAG dock: perform with %lu path(s), slot %ld, controller %p\n",
+			(unsigned long)[paths count], (long)index, (void *)_controller);
+	}
 	if ([paths count] > 0 && _controller != nil) {
 		pinned = [(DockController *)_controller pinApplicationPaths:paths atIndex:index];
+	}
+	if (getenv("AGORA_DRAG_DIAG") != NULL) {
+		fprintf(stderr, "  DIAG dock: pinned %d\n", (int)pinned);
 	}
 	[self fn_setExternalDropIndex:(NSInteger)DockHitNone];
 	return pinned;
