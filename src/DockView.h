@@ -36,6 +36,7 @@
 	NSInteger _pressIndex;			/* the tile the button went down on, or DockHitNone */
 	NSPoint _pressPoint;			/* where it went down: the drag's threshold is measured from here */
 	BOOL _dragging;				/* the press became a drag, so the release moves rather than invokes */
+	NSInteger _externalDropIndex;		/* the slot a drag from ANOTHER application would land in, or DockHitNone */
 }
 
 - (void)setTiles:(NSArray *)tiles;
@@ -58,6 +59,11 @@ typedef enum {
  * trash or past it is the last slot too — the trash is not a drop target yet, and a drag that ends on it must not
  * leave the tile nowhere. Answers DockHitNone only when there is no tile to move. */
 - (NSInteger)tileIndexForDropAtPoint:(NSPoint)point;
+
+/* **AND THE SLOT AN EXTERNAL DRAG IS AIMING AT, WHICH THE STRIP DRAWS AS AN INSERTION MARK.** A drag from another
+ * application carries file names; the strip reports where a drop would put them and answers the drag-operation mask, so
+ * a person sees the slot before letting go. DockHitNone means no drag is over the strip. */
+- (NSInteger)externalDropIndex;
 
 @end
 

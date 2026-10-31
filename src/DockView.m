@@ -17,10 +17,12 @@
  * apart: lit for the ones with a process, dark for the place a quit application will come back to.
  */
 #import "DockView.h"
+#import "DockController.h"
 #import "DockTile.h"
 
 #import <AppKit/NSBezierPath.h>
 #import <AppKit/NSColor.h>
+#import <AppKit/NSPasteboard.h>
 #import <AppKit/NSFont.h>
 #import <AppKit/NSImage.h>
 #import <AppKit/NSStringDrawing.h>
@@ -65,6 +67,11 @@
 	if ((self = [super initWithFrame:frame]) != nil) {
 		_tiles = [[NSArray alloc] init];
 		_pressIndex = (NSInteger)DockHitNone;
+		_externalDropIndex = (NSInteger)DockHitNone;
+		/* **THE STRIP IS A DROP TARGET FOR APPLICATIONS THE DOCK DOES NOT HAVE YET.** A file-name list is what every
+		 * application's drag supplies — Workspace's icon view puts exactly that on the pasteboard — and it is the only
+		 * type this view asks for: a drag of text or of an image has nothing to pin. */
+		[self registerForDraggedTypes:[NSArray arrayWithObject:NSFilenamesPboardType]];
 	}
 	return self;
 }
@@ -303,6 +310,93 @@
 }
 
 /* ---------------------------------------------------------------------------------------------------
+ * a drag from ANOTHER application: the slot, and the pin
+ * --------------------------------------------------------------------------------------------------- */
+
+/* **ONLY AN APPLICATION BUNDLE IS SOMETHING TO PIN, AND THIS IS THE ONE PLACE THAT IS DECIDED FOR A DRAG.** The name list
+ * is filtered through `DockTile`'s own constructor rather than by extension here, so "what the Dock will pin" has one
+ * answer shared by the drop, the menu and the defaults. */
+static NSArray *fn_application_paths(id <NSDraggingInfo> info)
+{
+	NSArray *names = [[info draggingPasteboard] propertyListForType:NSFilenamesPboardType];
+	NSMutableArray *paths = [NSMutableArray array];
+	NSUInteger i;
+
+	if (![names isKindOfClass:[NSArray class]]) {
+		return paths;
+	}
+	for (i = 0; i < [names count]; i++) {
+		id path = [names objectAtIndex:i];
+
+		if ([path isKindOfClass:[NSString class]] && [DockTile tileWithApplicationBundleAtPath:path] != nil) {
+			[paths addObject:path];
+		}
+	}
+	return paths;
+}
+
+- (NSInteger)externalDropIndex
+{
+	return _externalDropIndex;
+}
+
+- (void)fn_setExternalDropIndex:(NSInteger)index
+{
+	if (_externalDropIndex == index) {
+		return;
+	}
+	_externalDropIndex = index;
+	[self setNeedsDisplay:YES];
+}
+
+/* **THE SLOT IS WHERE THE POINTER IS, WHICH IS THE SAME ARITHMETIC A TILE'S OWN DRAG USES.** The strip answers the drag
+ * mask for an application and nothing for anything else, so a document dragged over the Dock is a drag the Dock does not
+ * want rather than one it takes and then ignores. */
+- (NSDragOperation)draggingEntered:(id <NSDraggingInfo>)info
+{
+	NSPoint where = [self convertPoint:[info draggingLocation] fromView:nil];
+
+	if ([fn_application_paths(info) count] == 0) {
+		[self fn_setExternalDropIndex:(NSInteger)DockHitNone];
+		return NSDragOperationNone;
+	}
+	[self fn_setExternalDropIndex:[self tileIndexForDropAtPoint:where]];
+	return NSDragOperationCopy;
+}
+
+- (NSDragOperation)draggingUpdated:(id <NSDraggingInfo>)info
+{
+	return [self draggingEntered:info];
+}
+
+- (void)draggingExited:(id <NSDraggingInfo>)info
+{
+	(void)info;
+	[self fn_setExternalDropIndex:(NSInteger)DockHitNone];
+}
+
+- (BOOL)prepareForDragOperation:(id <NSDraggingInfo>)info
+{
+	return [fn_application_paths(info) count] > 0;
+}
+
+/* **THE DROP PINS WHERE IT WAS AIMED, AND THE SLOT IS THE WHOLE OF "WHERE".** A slot past the last tile (the pointer was
+ * over the trash, or below the strip) is the end of the pinned list, which is where a Dock puts a new tile, and the
+ * controller owns that arithmetic — the view only says which slot and which applications. */
+- (BOOL)performDragOperation:(id <NSDraggingInfo>)info
+{
+	NSArray *paths = fn_application_paths(info);
+	NSInteger index = _externalDropIndex;
+	BOOL pinned = NO;
+
+	if ([paths count] > 0 && _controller != nil) {
+		pinned = [(DockController *)_controller pinApplicationPaths:paths atIndex:index];
+	}
+	[self fn_setExternalDropIndex:(NSInteger)DockHitNone];
+	return pinned;
+}
+
+/* ---------------------------------------------------------------------------------------------------
  * drawing
  * --------------------------------------------------------------------------------------------------- */
 
@@ -347,6 +441,26 @@
 			[[NSColor colorWithCalibratedRed:0.98 green:0.98 blue:0.98 alpha:0.95] setFill];
 			[indicator fill];
 		}
+	}
+
+	/* **AND THE SLOT A DRAG FROM OUTSIDE WOULD LAND IN, DRAWN AS AN INSERTION MARK.** The tiles do not make room for it —
+	 * the drop happens on the release — so the mark says where the tile WILL be: a bar in the gap above the tile that is
+	 * there now, in the accent colour every other mark on this desktop uses. A slot below the last tile has no tile to
+	 * sit above, so the mark goes under the last one, which is the same place the drop will put it. */
+	if (_externalDropIndex != (NSInteger)DockHitNone && shown > 0) {
+		NSUInteger slot = (NSUInteger)_externalDropIndex;
+		NSRect tile = DockTileRect([self bounds], _orientation, (slot < shown) ? slot : shown - 1,
+					   DockDefaultMetrics);
+		CGFloat thickness = 3.0;
+		NSRect mark = NSMakeRect(tile.origin.x - 2.0,
+					 (slot < shown) ? NSMaxY(tile) + (DockDefaultMetrics.spacing / 2.0) - (thickness / 2.0)
+							: NSMinY(tile) - (DockDefaultMetrics.spacing / 2.0) - (thickness / 2.0),
+					 tile.size.width + 4.0, thickness);
+		NSBezierPath *path = [NSBezierPath bezierPathWithRoundedRect:mark xRadius:thickness / 2.0
+								      yRadius:thickness / 2.0];
+
+		[[NSColor cg_accentColor] setFill];
+		[path fill];
 	}
 
 	/* AND THE TRASH, LAST AND AT THE BOTTOM. */

@@ -34,5 +34,17 @@ add_executable(dock_badge dock_badge.m "${CMAKE_CURRENT_SOURCE_DIR}/../src/DockV
 	"${CMAKE_CURRENT_SOURCE_DIR}/../src/DockLayout.m" "${CMAKE_CURRENT_SOURCE_DIR}/../src/DockTile.m")
 target_include_directories(dock_badge PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src")
 target_link_libraries(dock_badge PRIVATE AgoraApp::App m)
+# **A DRAG FROM ANOTHER APPLICATION: WHAT THE STRIP TAKES AND WHERE IT WOULD LAND.** An application bundle dropped on
+# the Dock is pinned at the slot the pointer was over, so the two questions worth measuring are "is this a drag the Dock
+# accepts" and "which slot does the strip report" — plus what a bundle on disk becomes. A real Dock needs a screen; the
+# strip drawn offscreen and a recording stand-in for the controller need none.
+add_executable(dock_pin dock_pin.m "${CMAKE_CURRENT_SOURCE_DIR}/../src/DockView.m"
+	"${CMAKE_CURRENT_SOURCE_DIR}/../src/DockLayout.m" "${CMAKE_CURRENT_SOURCE_DIR}/../src/DockTile.m"
+	"${CMAKE_CURRENT_SOURCE_DIR}/../src/DockOrder.m")
+target_include_directories(dock_pin PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src")
+target_link_libraries(dock_pin PRIVATE AgoraApp::App m)
+add_test(NAME dock-pin COMMAND dock_pin)
+set_tests_properties(dock-pin PROPERTIES ENVIRONMENT "${_dock_test_env}")
+
 add_test(NAME dock-badge COMMAND dock_badge)
 set_tests_properties(dock-badge PROPERTIES ENVIRONMENT "${_dock_test_env}")

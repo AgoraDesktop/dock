@@ -189,6 +189,36 @@ int main(void)
 			      "a tile cannot be made without an identifier at all");
 		}
 
+		/* **AND ONE PLACED AT A SLOT, WHICH IS WHAT A DROP FROM ANOTHER APPLICATION IS.** An application dropped between
+		 * two pins belongs BETWEEN them — that is the whole of "pin it where I aimed" — and an application that is
+		 * already a pin MOVES rather than appearing twice. The slot is a position in the array before the change, which is
+		 * what a drop index is. */
+		{
+			NSArray *start = [NSArray arrayWithObjects:@"a.one", @"b.two", @"c.three", nil];
+			NSArray *placed = DockOrderInsertingIdentifier(start, @"new.app", 1);
+
+			check([placed count] == 4 && [[placed objectAtIndex:1] isEqualToString:@"new.app"],
+			      "a dropped application is inserted at the slot it was aimed at");
+			check([[placed objectAtIndex:0] isEqualToString:@"a.one"]
+			      && [[placed objectAtIndex:2] isEqualToString:@"b.two"],
+			      "with the pins either side of it unmoved");
+			placed = DockOrderInsertingIdentifier(start, @"new.app", 0);
+			check([[placed objectAtIndex:0] isEqualToString:@"new.app"], "slot 0 is the front of the list");
+			placed = DockOrderInsertingIdentifier(start, @"new.app", 99);
+			check([[placed lastObject] isEqualToString:@"new.app"], "and a slot past the end is the end");
+			placed = DockOrderInsertingIdentifier(start, @"c.three", 0);
+			check([placed count] == 3 && [[placed objectAtIndex:0] isEqualToString:@"c.three"],
+			      "an application that is already a pin MOVES to the slot instead of appearing twice");
+			{
+				NSArray *same = DockOrderInsertingIdentifier(start, @"a.one", 0);
+
+				check([same count] == 3 && [[same objectAtIndex:0] isEqualToString:@"a.one"],
+				      "and one dropped on its own place is left where it is");
+			}
+			check([DockOrderInsertingIdentifier(start, @"", 1) count] == 3,
+			      "an identifier nobody could write down changes nothing");
+		}
+
 		printf("dock_order: %d case(s) failed\n", s_failures);
 	}
 	return s_failures == 0 ? 0 : 1;

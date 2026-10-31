@@ -124,6 +124,31 @@ NSArray *DockOrderPinnedAfterMove(NSArray *pinnedIdentifiers, NSArray *displayed
 	return pinned;
 }
 
+NSArray *DockOrderInsertingIdentifier(NSArray *pinnedIdentifiers, NSString *identifier, NSUInteger index)
+{
+	NSMutableArray *order = [NSMutableArray arrayWithArray:(pinnedIdentifiers != nil) ? pinnedIdentifiers : [NSArray array]];
+	NSUInteger at = [order indexOfObject:identifier];
+
+	if ([identifier length] == 0) {
+		return order;
+	}
+	if (index > [order count]) {
+		index = [order count];
+	}
+	if (at != NSNotFound) {
+		/* A PIN THAT IS ALREADY ON THE STRIP MOVES RATHER THAN APPEARS TWICE. The slot is in the array BEFORE the
+		 * move, which is what a drop index is — the same convention `-DockOrderMoving` keeps. */
+		[order removeObjectAtIndex:at];
+		if (index > [order count]) {
+			index = [order count];
+		}
+		[order insertObject:identifier atIndex:index];
+		return order;
+	}
+	[order insertObject:identifier atIndex:index];
+	return order;
+}
+
 NSArray *DockOrderPinnedAdding(NSArray *pinnedIdentifiers, NSString *identifier)
 {
 	NSMutableArray *pinned = [NSMutableArray arrayWithArray:pinnedIdentifiers];

@@ -533,6 +533,62 @@ static NSString *const DockPinnedApplicationsKey = @"DockPinnedApplications";
 	}
 }
 
+/* **A DROP FROM ANOTHER APPLICATION IS THE OTHER WAY A TILE IS PINNED**, and it is the same statement the drag inside the
+ * strip makes: this application belongs at this place. The slot is a position in the DISPLAYED strip, whose beginning is
+ * the pinned list — so it is used directly as a position in that list, and a slot past the last shown tile (the pointer
+ * over the trash, or below the strip) becomes the end of it, which is where a Dock puts a new tile.
+ *
+ * **THE TILE THE DOCK ALREADY HAS WINS**, so an application that is running and unpinned keeps its icon, its name and its
+ * running dot when it is pinned; a bundle nobody has seen becomes a tile of its own, built from the bundle's own
+ * declaration (see `DockTile`). The pinned list is then rebuilt through `-setPinnedIdentifiers:`, which is what applies
+ * the desktop rule, and written down — a pin that did not survive the next launch would not be a pin. */
+- (BOOL)pinApplicationPaths:(NSArray *)paths atIndex:(NSInteger)index
+{
+	NSMutableArray *identifiers = [NSMutableArray arrayWithArray:[self pinnedIdentifiers]];
+	NSMutableArray *tiles = [NSMutableArray array];
+	NSInteger at = (index < 0) ? (NSInteger)[identifiers count] : index;
+	NSUInteger i;
+
+	for (i = 0; i < [paths count]; i++) {
+		id path = [paths objectAtIndex:i];
+		DockTile *tile = nil;
+
+		if (![path isKindOfClass:[NSString class]]) {
+			continue;
+		}
+		{
+			DockTile *dropped = [DockTile tileWithApplicationBundleAtPath:path];
+			DockTile *existing;
+
+			if (dropped == nil) {
+				continue;
+			}
+			existing = [self tileWithIdentifier:[dropped identifier]];
+			tile = (existing != nil) ? existing : dropped;
+		}
+		[tile setPinned:YES];
+		/* A TILE THAT WAS ALREADY THE DOCK'S KEEPS ITS OWN FILE AND NAME; one built from the dropped bundle carries the
+		 * path it came from, which is what the tile's launch and its icon are drawn from. */
+		if (![_pinned containsObject:tile]) {
+			NSUInteger slot = (at < 0) ? 0 : ((NSUInteger)at > [_pinned count] ? [_pinned count] : (NSUInteger)at);
+
+			[_pinned insertObject:tile atIndex:slot];
+		}
+		identifiers = [NSMutableArray arrayWithArray:
+				DockOrderInsertingIdentifier(identifiers, [tile identifier],
+							     (at < 0) ? 0 : (NSUInteger)at)];
+		[tiles addObject:tile];
+		at++;
+	}
+	if ([tiles count] == 0) {
+		return NO;
+	}
+	[self setPinnedIdentifiers:identifiers];
+	[self writePinnedTiles];
+	[self refresh];
+	return YES;
+}
+
 /* ---------------------------------------------------------------------------------------------------
  * the drag: one step, the release, and the way back
  * --------------------------------------------------------------------------------------------------- */

@@ -13,6 +13,7 @@
 #import <AppKit/NSImage.h>
 #import <AppKit/NSRunningApplication.h>
 #import <AppKit/NSWorkspace.h>
+#import <Foundation/NSBundle.h>
 
 #import <Foundation/NSArray.h>
 #import <Foundation/NSDictionary.h>
@@ -59,6 +60,38 @@ static NSString *const DockTilePathKey = @"path";
 	tile->_bundleURL = [bundleURL copy];
 	tile->_pinned = YES;
 	return tile;
+}
+
++ (DockTile *)tileWithApplicationBundleAtPath:(NSString *)path
+{
+	NSBundle *bundle;
+	NSString *identifier;
+	NSString *title;
+	NSString *extension;
+
+	if ([path length] == 0) {
+		return nil;
+	}
+	/* **THE SAME TWO QUESTIONS THE REST OF THIS STACK ASKS ABOUT A BUNDLE**: a directory whose name says `.app` (in any
+	 * case), asked through the AppKit so a bundle at an odd path is recognised wherever it sits. A dropped FOLDER, a
+	 * dropped document and a dropped `.app` with no declaration behind it are all refused here, and a drop that carries
+	 * one is a drop the Dock declines for that item.
+	 */
+	extension = [path pathExtension];
+	if ([extension caseInsensitiveCompare:@"app"] != NSOrderedSame
+	    || ![[NSWorkspace sharedWorkspace] isFilePackageAtPath:path]) {
+		return nil;
+	}
+	bundle = [NSBundle bundleWithPath:path];
+	identifier = [bundle bundleIdentifier];
+	if ([identifier length] == 0) {
+		return nil;	/* nothing to write down, so nothing to pin */
+	}
+	title = [bundle objectForInfoDictionaryKey:@"CFBundleName"];
+	if ([title length] == 0) {
+		title = [[path lastPathComponent] stringByDeletingPathExtension];
+	}
+	return [self tileWithIdentifier:identifier title:title bundleURL:[NSURL fileURLWithPath:path]];
 }
 
 - (void)dealloc

@@ -56,6 +56,12 @@ NSArray *DockOrderPinnedAfterMove(NSArray *pinnedIdentifiers, NSArray *displayed
 /* **AND THE MENU'S TWO ROWS.** Pinning appends — a tile only reachable through the menu has no drop position to
  * respect — and an identifier already pinned is not pinned twice; unpinning removes it, which for a running
  * application leaves its tile at the end of the strip and for one that is not running takes the tile away. */
+/* **AND ONE PLACED AT A SLOT, WHICH IS WHAT A DROP IS: inserted where it was aimed, or MOVED there if it was already a
+ * pin.** A pin dragged to a new place keeps its place, and an application dropped from outside becomes one — the two are
+ * the same statement about the strip's shape, so they are the same function. `index` is a position in the array BEFORE
+ * the change (a drop slot), clamped to the end; an identifier that is already at `index` is left alone. */
+NSArray *DockOrderInsertingIdentifier(NSArray *pinnedIdentifiers, NSString *identifier, NSUInteger index);
+
 NSArray *DockOrderPinnedAdding(NSArray *pinnedIdentifiers, NSString *identifier);
 NSArray *DockOrderPinnedRemoving(NSArray *pinnedIdentifiers, NSString *identifier);
 

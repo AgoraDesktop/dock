@@ -74,6 +74,12 @@
  * follows the pointer, nothing is written down); `-commitTileOrder` is the release that PINS the tile where it was
  * dropped and writes the order to the defaults; `-cancelTileOrder` puts back the order the drag started from, for a
  * release that never arrived or a press that interrupted one. */
+/* **AND A DRAG FROM ANOTHER APPLICATION PINS AT THE SLOT IT WAS DROPPED ON.** The paths are application bundles (the view
+ * has already filtered what it will accept, and this filters again through the same constructor, so the door is safe to
+ * call from anywhere); the slot is a position in the displayed strip, and a negative one means the end — a drop past the
+ * last tile. Answers YES when at least one application was pinned. */
+- (BOOL)pinApplicationPaths:(NSArray *)paths atIndex:(NSInteger)index;
+
 - (void)moveTileFromIndex:(NSNumber *)from toIndex:(NSNumber *)to;
 - (void)commitTileOrder;
 - (void)cancelTileOrder;

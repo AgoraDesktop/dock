@@ -47,6 +47,14 @@
 /* A TILE FROM THE PINNED LIST: what a previous run wrote down, with no application behind it until one appears. */
 + (DockTile *)tileWithIdentifier:(NSString *)identifier title:(NSString *)title bundleURL:(NSURL *)bundleURL;
 
+/* **AND A TILE FROM AN APPLICATION ON DISK, WHICH IS WHAT A DRAG FROM ANOTHER APPLICATION CARRIES.** A dropped bundle has
+ * no running application behind it — it may be one the Dock has never seen — so the identifier, the name and the file all
+ * come from the bundle itself: `CFBundleIdentifier` for the pin's key, `CFBundleName` (and then the file's name) for what
+ * the tile is called, and the path for launching and for the icon. Answers nil for a path that is not an application
+ * bundle, which is what makes "what may be pinned" one question with one answer here rather than a rule each caller
+ * repeats. */
++ (nullable DockTile *)tileWithApplicationBundleAtPath:(nullable NSString *)path;
+
 - (NSString *)identifier;
 - (NSString *)title;
 - (NSURL *)bundleURL;
