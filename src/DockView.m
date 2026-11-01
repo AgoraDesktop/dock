@@ -28,6 +28,7 @@
 #import <AppKit/NSStringDrawing.h>
 #import <AppKit/NSWindow.h>
 #import <AppKit/NSWorkspace.h>
+#import <Foundation/NSURL.h>
 
 #import <Foundation/NSArray.h>
 #import <Foundation/NSDictionary.h>
@@ -335,6 +336,27 @@ static NSArray *fn_application_paths(id <NSDraggingInfo> info)
 	return paths;
 }
 
+/* **EVERY PATH A DRAG CARRIES**, which is what the trash takes: the pin rule above filters for bundles, and the trash
+ * wants the documents the Dock does not pin. */
+static NSArray *fn_file_paths(id <NSDraggingInfo> info)
+{
+	NSArray *names = [[info draggingPasteboard] propertyListForType:NSFilenamesPboardType];
+	NSMutableArray *paths = [NSMutableArray array];
+	NSUInteger i;
+
+	if (![names isKindOfClass:[NSArray class]]) {
+		return paths;
+	}
+	for (i = 0; i < [names count]; i++) {
+		id path = [names objectAtIndex:i];
+
+		if ([path isKindOfClass:[NSString class]] && [path length] > 0) {
+			[paths addObject:path];
+		}
+	}
+	return paths;
+}
+
 - (NSInteger)externalDropIndex
 {
 	return _externalDropIndex;
@@ -352,10 +374,34 @@ static NSArray *fn_application_paths(id <NSDraggingInfo> info)
 /* **THE SLOT IS WHERE THE POINTER IS, WHICH IS THE SAME ARITHMETIC A TILE'S OWN DRAG USES.** The strip answers the drag
  * mask for an application and nothing for anything else, so a document dragged over the Dock is a drag the Dock does not
  * want rather than one it takes and then ignores. */
+- (BOOL)cg_trashIsDropTarget
+{
+	return _trashTarget;
+}
+
+- (void)fn_setTrashTarget:(BOOL)target
+{
+	if (_trashTarget == target) {
+		return;
+	}
+	_trashTarget = target;
+	[self setNeedsDisplay:YES];
+}
+
+/* **THE TRASH TAKES ANY FILE, AND IT DECIDES BEFORE THE PIN RULE DOES.** A bundle let go over the trash is a bundle
+ * being thrown away, not one being pinned, so the trash is asked first. The mask answered is COPY because that is what a
+ * source may permit another application (the Workspace offers Copy across a process boundary), and the destination is
+ * what decides that a copy onto the trash is a move into it. */
 - (NSDragOperation)draggingEntered:(id <NSDraggingInfo>)info
 {
 	NSPoint where = [self convertPoint:[info draggingLocation] fromView:nil];
 
+	if ([self hitTestTileAtPoint:where] == DockHitTrash && [fn_file_paths(info) count] > 0) {
+		[self fn_setExternalDropIndex:(NSInteger)DockHitNone];
+		[self fn_setTrashTarget:YES];
+		return NSDragOperationCopy;
+	}
+	[self fn_setTrashTarget:NO];
 	if ([fn_application_paths(info) count] == 0) {
 		[self fn_setExternalDropIndex:(NSInteger)DockHitNone];
 		return NSDragOperationNone;
@@ -373,11 +419,12 @@ static NSArray *fn_application_paths(id <NSDraggingInfo> info)
 {
 	(void)info;
 	[self fn_setExternalDropIndex:(NSInteger)DockHitNone];
+	[self fn_setTrashTarget:NO];
 }
 
 - (BOOL)prepareForDragOperation:(id <NSDraggingInfo>)info
 {
-	return [fn_application_paths(info) count] > 0;
+	return _trashTarget || [fn_application_paths(info) count] > 0;
 }
 
 /* **THE DROP PINS WHERE IT WAS AIMED, AND THE SLOT IS THE WHOLE OF "WHERE".** A slot past the last tile (the pointer was
@@ -385,6 +432,37 @@ static NSArray *fn_application_paths(id <NSDraggingInfo> info)
  * controller owns that arithmetic — the view only says which slot and which applications. */
 - (BOOL)performDragOperation:(id <NSDraggingInfo>)info
 {
+	/* **A DROP ON THE TRASH IS A FILE THROWN AWAY.** The move is the AppKit's recycle — the home trash on the item's own
+	 * volume, a name that does not collide, and a copy-and-remove when a rename cannot cross a device — which is the same
+	 * rule the Workspace's `WSTrash` moves by even though only the Workspace keeps the Put Back record. */
+	if (_trashTarget) {
+		NSArray *thrown = fn_file_paths(info);
+		NSMutableArray *urls = [NSMutableArray array];
+		BOOL done;
+		NSUInteger i;
+
+		[self fn_setTrashTarget:NO];
+		[self fn_setExternalDropIndex:(NSInteger)DockHitNone];
+		for (i = 0; i < [thrown count]; i++) {
+			NSURL *url = [NSURL fileURLWithPath:[thrown objectAtIndex:i]];
+
+			if (url != nil) {
+				[urls addObject:url];
+			}
+		}
+		{
+			NSArray *recycled = (NSArray *)[[NSWorkspace sharedWorkspace] recycleURLs:urls
+									 completionHandler:nil];
+
+			done = ([urls count] > 0) && ([recycled count] == [urls count]);
+			if (getenv("AGORA_DOCK_DIAG") != NULL) {
+				fprintf(stderr, "dock: %lu item(s) to the trash: %s -> %s\n", (unsigned long)[urls count],
+					done ? "done" : "FAILED", [[recycled description] UTF8String]);
+			}
+		}
+		[self setNeedsDisplay:YES];
+		return done;
+	}
 	NSArray *paths = fn_application_paths(info);
 	NSInteger index = _externalDropIndex;
 	BOOL pinned = NO;
@@ -474,6 +552,13 @@ static NSArray *fn_application_paths(id <NSDraggingInfo> info)
 	{
 		NSRect trash = DockTrashRect([self bounds], _orientation, DockDefaultMetrics);
 		NSImage *icon = [self trashIcon];
+
+		/* **THE TRASH LIGHTS UP UNDER A FILE BEING THROWN AWAY**, which is the only answer a drop needs before the hand
+		 * lets go: what is under the pointer will take what it is carrying. */
+		if (_trashTarget) {
+			[[NSColor colorWithCalibratedRed:0.30 green:0.50 blue:0.90 alpha:0.45] setFill];
+			[[NSBezierPath bezierPathWithRoundedRect:trash xRadius:9.0 yRadius:9.0] fill];
+		}
 
 		if (icon != nil) {
 			[icon drawInRect:trash];

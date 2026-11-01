@@ -85,6 +85,13 @@ to terminate through `quit_window` — `agora-shell` 12 — and starts it again 
 gone. That is why the door exists at all: `close_window` asks each WINDOW and leaves the rest to the application, and
 Workspace's windows are furniture, so closing them changes nothing about the process.
 
+**AND THE TRASH TAKES A FILE.** A drag carrying file names that is over the trash tile is a drag the strip accepts —
+the trash is asked before the pin rule, so a bundle let go there is a bundle being thrown away rather than one being
+pinned — the tile lights while it is over it, and the release moves the items to the trash. The move is the AppKit's
+recycle: the home trash on the item's own volume, a name that does not collide, and a copy-and-remove when a rename
+cannot cross a device. The mask answered is Copy because that is what a source may permit another application, and the
+DESTINATION is what decides that a copy onto the trash is a move into it.
+
 **AND THE GESTURE IS DECIDED BY THE RELEASE.** A press within a few points of where it started is a click; past that it
 is a DRAG, the tile follows the pointer to the slot it is over, and letting go **repositions it in the Dock's order and
 pins it** — `DockOrder -pinnedAfterMove:` keeps the pins that were there plus the one that was dragged. Dropping it
@@ -125,9 +132,11 @@ and never a panel that fails to open. See `NSDockMenu.h` in `libagora-app` for b
 
 ## What is not here yet, named
 
-- **The trash does nothing on click, and takes no drops.** Its icon is here, but what a click or a drop MEANS is
-  Workspace's (`WSTrash`) and the contract between the two is `WORKSPACE-PLAN.md` §5.3, still undecided. Cross-process
-  drag does not exist in the window server yet, so a drop could not arrive.
+- **The trash still does nothing on click.** A drop on it recycles (see the drag section), because the move itself is the
+  AppKit's `-recycleURLs:completionHandler:` — the same trash directory the Workspace's `WSTrash` uses — but what a
+  CLICK means is the Workspace's, and the contract between the two is `WORKSPACE-PLAN.md` §5.3, still undecided. **And
+  only the Workspace keeps the Put Back record**, so an item thrown away from the Dock has no record of where it came
+  from: it is in the trash, and Put Back in the file manager does not know about it.
 - **No bounce, no magnification, and nothing that puts an application on the Dock besides a gesture.** Bounce needs
   `-requestUserAttention:` to reach the Dock; magnification is a drawing decision nobody has made; and a pin can only be
   made from a tile that exists — a drag, or the menu row — because an "add an application" panel would need a Launch

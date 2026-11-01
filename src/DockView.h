@@ -32,6 +32,7 @@
 	NSDictionary *_badgeLabels;		/* bundle identifier -> the label its tile shows (NSDockTile) */
 	DockOrientation _orientation;
 	NSImage *_trashIcon;			/* resolved once from the trash directory */
+	BOOL _trashTarget;			/* a drag carrying files is over the trash tile */
 	id _controller;				/* NOT retained: the controller owns this view */
 	NSInteger _pressIndex;			/* the tile the button went down on, or DockHitNone */
 	NSPoint _pressPoint;			/* where it went down: the drag's threshold is measured from here */
@@ -44,6 +45,10 @@
 - (void)setBadgeLabels:(NSDictionary *)labels;
 - (void)setOrientation:(DockOrientation)orientation;
 - (void)setController:(id)controller;
+
+/* **WHETHER THE TRASH IS THE THING A DRAG IS OVER.** The tile a drop lands on is the strip's own hit test, and the
+ * trash is the one slot that is not an application: a drop there is a file being thrown away. */
+- (BOOL)cg_trashIsDropTarget;
 
 /* WHICH TILE A POINT IS OVER: an application index, the trash, or nothing. The view's own hit test, which is why
  * the click does not have to recompute the layout in the controller. */

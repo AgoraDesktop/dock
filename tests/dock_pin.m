@@ -169,7 +169,6 @@ int main(void)
 
 		setvbuf(stdout, NULL, _IONBF, 0);
 		(void)[[NSApplication sharedApplication] finishLaunching];
-		[manager removeItemAtPath:root error:NULL];
 		[manager createDirectoryAtPath:root withIntermediateDirectories:YES attributes:nil error:NULL];
 
 		solid = make_bundle(root, @"Probe.app", @"com.agora.dock-pin-probe");
@@ -257,6 +256,64 @@ int main(void)
 		}
 
 		[manager removeItemAtPath:root error:NULL];
+		/* 5. **THE TRASH TAKES ANY FILE, AND THROWS IT AWAY.** The trash is the one slot that is not an application: a
+		 * document let go over it is recycled — the AppKit's own move, the same directory the Workspace's trash uses — and
+		 * the drag's mask is accepted where the pin rule would have refused it. */
+		{
+			DockView *view = [[[DockView alloc] initWithFrame:NSMakeRect(0.0, 0.0, 72.0, 400.0)] autorelease];
+			NSRect trash = DockTrashRect([view bounds], DockOrientationRight, DockDefaultMetrics);
+			NSPoint over = NSMakePoint(NSMidX(trash), NSMidY(trash));
+			char scratch[64] = "/tmp/agora-dock-trash-XXXXXX";
+			NSString *name = [NSString stringWithFormat:@"thrown-%d.txt", (int)getpid()];
+			NSString *directory;
+			NSString *victim;
+			AGPinDrag *document;
+
+			if (mkdtemp(scratch) == NULL) {
+				printf("FAIL: could not make the trash fixture\n");
+				goto done;
+			}
+			directory = [manager stringWithFileSystemRepresentation:scratch length:strlen(scratch)];
+			victim = [directory stringByAppendingPathComponent:name];
+			[manager createFileAtPath:victim contents:[NSData data] attributes:nil];
+			document = [[[AGPinDrag alloc] initWithPaths:[NSArray arrayWithObject:victim] at:over] autorelease];
+			[view setTiles:[NSArray array]];
+			[view setController:nil];
+
+			check([view draggingEntered:document] == NSDragOperationCopy,
+			      "a document dragged over the TRASH is a drag the Dock takes");
+			check([view cg_trashIsDropTarget], "and the trash is the tile it says it is over");
+			[view draggingExited:document];
+			check(![view cg_trashIsDropTarget], "which it stops saying when the drag leaves");
+			(void)[view draggingEntered:document];
+			check([view prepareForDragOperation:document], "the release is prepared for it");
+			check([view performDragOperation:document], "and performing it moves the file to the trash");
+			check(![manager fileExistsAtPath:victim], "the file is gone from where it was");
+			{
+				/* **WHERE A TRASH IS IS THE APPKIT'S RULE** — the home trash for an item on the home volume, a
+				 * `.Trash-<uid>` on the item's own volume otherwise — and the fixture may sit on either. So the two
+				 * candidates are asked, and exactly one of them holds the name. */
+				NSArray *candidates = [NSArray arrayWithObjects:
+					[NSHomeDirectory() stringByAppendingPathComponent:@".Trash"],
+					[NSString stringWithFormat:@"/tmp/.Trash-%d", (int)getuid()], nil];
+				NSUInteger i, found = 0;
+
+				for (i = 0; i < [candidates count]; i++) {
+					NSString *candidate = [[candidates objectAtIndex:i]
+						stringByAppendingPathComponent:name];
+
+					if ([manager fileExistsAtPath:candidate]) {
+						found++;
+						[manager removeItemAtPath:candidate error:NULL];
+					}
+				}
+				check(found == 1, "and it is in a trash, once — the directory the Workspace's own trash uses");
+			}
+			check(![view cg_trashIsDropTarget], "with the mark gone once the drop has happened");
+			[manager removeItemAtPath:directory error:NULL];
+		}
+
+	done:
 		printf(s_failed == 0 ? "dock_pin: all checks passed\n" : "dock_pin: FAILURES\n");
 	}
 	return s_failed == 0 ? 0 : 1;
