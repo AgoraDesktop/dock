@@ -98,6 +98,7 @@ static void check(int ok, const char *name)
 	NSArray *paths;
 	NSInteger index;
 	int calls;
+	int trashCalls;
 	BOOL answer;
 }
 @end
@@ -117,6 +118,7 @@ static void check(int ok, const char *name)
 - (void)commitTileOrder {}
 - (void)moveTileFromIndex:(NSNumber *)from toIndex:(NSNumber *)to { (void)from; (void)to; }
 - (void)activateTileAtIndex:(NSNumber *)i { (void)i; }
+- (void)openTrash { trashCalls++; }
 - (void)showMenuForTileAtIndex:(NSNumber *)i withEvent:(id)e { (void)i; (void)e; }
 
 - (void)dealloc
@@ -126,6 +128,15 @@ static void check(int ok, const char *name)
 }
 
 @end
+
+/* **A MOUSE EVENT, BECAUSE A CLICK IS ONE.** The strip reads `-locationInWindow` and converts it, so a probe says what
+ * a real event says. */
+static NSEvent *fn_mouse(NSEventType type, NSPoint point)
+{
+	return [NSEvent mouseEventWithType:type location:point modifierFlags:0
+				 timestamp:0.0 windowNumber:0 context:nil
+				 eventNumber:0 clickCount:1 pressure:1.0f];
+}
 
 /* ---- A BUNDLE ON DISK --------------------------------------------------------- */
 
@@ -253,6 +264,26 @@ int main(void)
 			check([view externalDropIndex] == 0, "the mark is back while a drag is over the strip");
 			[view draggingExited:appDrag];
 			check([view externalDropIndex] == (NSInteger)DockHitNone, "and gone when the drag leaves");
+		}
+
+		/* 5b. **A CLICK ON THE TRASH ASKS FOR ITS WINDOW.** The strip does not open a window itself: what a trash is
+		 * belongs to the file manager, so the release on that tile is one call to the controller — and a drag that
+		 * starts there moves nothing, because the trash is not a slot. */
+		{
+			DockView *view = [[[DockView alloc] initWithFrame:NSMakeRect(0.0, 0.0, 72.0, 400.0)] autorelease];
+			NSRect trash = DockTrashRect([view bounds], DockOrientationRight, DockDefaultMetrics);
+			NSPoint over = NSMakePoint(NSMidX(trash), NSMidY(trash));
+			AGPinController *controller = [[[AGPinController alloc] init] autorelease];
+
+			[view setTiles:[NSArray array]];
+			[view setController:controller];
+			[view mouseDown:fn_mouse(NSLeftMouseDown, over)];
+			[view mouseUp:fn_mouse(NSLeftMouseUp, over)];
+			check(controller->trashCalls == 1, "a click on the trash asks the controller for its window");
+			[view mouseDown:fn_mouse(NSLeftMouseDown, over)];
+			[view mouseDragged:fn_mouse(NSLeftMouseDragged, NSMakePoint(over.x, over.y + 60.0))];
+			[view mouseUp:fn_mouse(NSLeftMouseUp, NSMakePoint(over.x, over.y + 60.0))];
+			check(controller->trashCalls == 1, "and a drag that starts on it is not a second click");
 		}
 
 		[manager removeItemAtPath:root error:NULL];

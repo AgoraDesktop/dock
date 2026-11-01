@@ -33,6 +33,7 @@
 #import <AppKit/NSDockTile.h>
 #import <AppKit/NSMenuItem.h>
 #import <AppKit/NSRunningApplication.h>
+#import <AppKit/platform/AGWindowServer.h>
 #import <AppKit/NSScreen.h>
 #import <AppKit/NSView.h>
 #import <AppKit/NSStatusBar.h>
@@ -491,6 +492,53 @@ static NSString *const DockPinnedApplicationsKey = @"DockPinnedApplications";
 /* ---------------------------------------------------------------------------------------------------
  * what a click means
  * --------------------------------------------------------------------------------------------------- */
+
+/* **THE TRASH'S CLICK: A WINDOW ON `~/.Trash`, WHICH IS THE FILE MANAGER'S WINDOW AND NOT THIS ONE'S.** The strip drew
+ * the tile; what a trash IS belongs to Workspace (`WSTrash` owns the directory, the Put Back records and the empty), so
+ * the click is a REQUEST and not an action: the running file manager is asked to open the path, through the same
+ * compositor channel a Dock menu question uses, and a file manager that is not running is launched instead — it then
+ * opens its desktop, and the trash window is one click away from there.
+ *
+ * MEASURED as the reason this is a request rather than `-openURL:`: opening a folder by URL resolves an application by
+ * DOCUMENT TYPE, and this tier's Workspace declares none — and a second Workspace would be a second desktop. The
+ * application that is already running is the one that has to be told. */
+- (void)openTrash
+{
+	NSString *trash = [NSHomeDirectory() stringByAppendingPathComponent:@".Trash"];
+	NSArray *running = [[NSWorkspace sharedWorkspace] runningApplications];
+	NSRunningApplication *desktop = nil;
+	NSUInteger i;
+
+	for (i = 0; i < [running count]; i++) {
+		NSRunningApplication *application = [running objectAtIndex:i];
+
+		if ([[application bundleIdentifier] isEqualToString:DockDesktopIdentifier]) {
+			desktop = application;
+			break;
+		}
+	}
+	if (desktop != nil) {
+		/* **A WINDOW IS THE ADDRESS AND NOT THE SUBJECT**, exactly as a dock menu's is: any window of the application
+		 * names it, and the frontmost is the honest choice. */
+		NSArray *windows = [desktop cg_windowIDs];
+		BOOL asked = NO;
+
+		if ([windows count] > 0) {
+			asked = (AGWindowServerOpenFile(AGWindowServerShared(), [[windows lastObject] unsignedIntValue],
+							[trash UTF8String]) != 0);
+		}
+		if (getenv("AGORA_DOCK_DIAG") != NULL) {
+			fprintf(stderr, "dock: trash click -> %s (%lu window(s))\n", asked ? "asked" : "refused",
+				(unsigned long)[windows count]);
+		}
+		if (asked) {
+			return;
+		}
+	}
+	/* NOTHING TO ASK: the file manager is not running, so the click starts it — which is what a tile click does for
+	 * every other application. */
+	[self launchTile:[self tileWithIdentifier:DockDesktopIdentifier]];
+}
 
 - (void)activateTileAtIndex:(NSNumber *)index
 {

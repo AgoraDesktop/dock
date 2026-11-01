@@ -248,13 +248,12 @@
 	if (_dragging && _controller != nil) {
 		[_controller cancelTileOrder];
 	}
-	_pressIndex = (hit >= 0) ? hit : (NSInteger)DockHitNone;
+	_pressIndex = (hit >= 0 || hit == DockHitTrash) ? hit : (NSInteger)DockHitNone;
 	_pressPoint = where;
 	_dragging = NO;
-	/* THE TRASH DOES NOTHING YET, AND THAT IS THE W3/W7 BOUNDARY: its icon is the Dock's, but what a click MEANS
-	 * — a file window on `~/.Trash` — is Workspace's, and the contract between the two is §5.3 of the plan and is
-	 * still undecided. A drop on it is the same contract from the other side, which is why a drop there lands on the
-	 * last tile instead. */
+	/* **A PRESS ON THE TRASH IS REMEMBERED SO ITS RELEASE CAN MEAN SOMETHING.** What it means is the file manager's —
+	 * a window on `~/.Trash` — so the release asks the controller, which asks the running application; the view has no
+	 * idea what a trash is beyond where it is drawn. */
 }
 
 - (void)mouseDragged:(id)event
@@ -262,7 +261,7 @@
 	NSPoint where = [self convertPoint:[event locationInWindow] fromView:nil];
 	NSInteger target;
 
-	if (_pressIndex < 0 || _controller == nil) {
+	if (_pressIndex < 0 || _pressIndex == (NSInteger)DockHitTrash || _controller == nil) {
 		return;
 	}
 	if (!_dragging) {
@@ -290,6 +289,17 @@
 	(void)event;
 	_pressIndex = (NSInteger)DockHitNone;
 	_dragging = NO;
+	if (index == (NSInteger)DockHitTrash) {
+		/* **A CLICK ON THE TRASH IS A REQUEST FOR ITS WINDOW**, and which window that is belongs to the file manager:
+		 * the controller knows which application shows folders and how to ask it. The release has to BE over the tile,
+		 * because the trash is not a slot a press can be dragged from — a hand that leaves it has changed its mind. */
+		NSPoint where = [self convertPoint:[(NSEvent *)event locationInWindow] fromView:nil];
+
+		if (_controller != nil && [self hitTestTileAtPoint:where] == DockHitTrash) {
+			[_controller openTrash];
+		}
+		return;
+	}
 	if (index < 0 || _controller == nil) {
 		return;
 	}

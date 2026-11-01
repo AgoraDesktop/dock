@@ -85,6 +85,12 @@ to terminate through `quit_window` — `agora-shell` 12 — and starts it again 
 gone. That is why the door exists at all: `close_window` asks each WINDOW and leaves the rest to the application, and
 Workspace's windows are furniture, so closing them changes nothing about the process.
 
+**AND A CLICK ON THE TRASH ASKS FOR ITS WINDOW.** The strip has no idea what a trash is beyond where it is drawn: what
+the click MEANS is the file manager's, so the release sends `agora_shell.open_file` with `~/.Trash` to the running
+Workspace — the same channel a dock menu question uses, with a path — and that application opens the folder. It is a
+request and not `-openURL:` because opening a folder by URL resolves an application by document type, and this tier's
+Workspace declares none; a second Workspace would be a second desktop, and the one that is running is the one to tell.
+
 **AND THE TRASH TAKES A FILE.** A drag carrying file names that is over the trash tile is a drag the strip accepts —
 the trash is asked before the pin rule, so a bundle let go there is a bundle being thrown away rather than one being
 pinned — the tile lights while it is over it, and the release moves the items to the trash. The move is the AppKit's
@@ -133,11 +139,12 @@ and never a panel that fails to open. See `NSDockMenu.h` in `libagora-app` for b
 
 ## What is not here yet, named
 
-- **The trash still does nothing on click.** A drop on it recycles (see the drag section), because the move itself is the
-  AppKit's `-recycleURLs:completionHandler:` — the same trash directory the Workspace's `WSTrash` uses — but what a
-  CLICK means is the Workspace's, and the contract between the two is `WORKSPACE-PLAN.md` §5.3, still undecided. **And
-  only the Workspace keeps the Put Back record**, so an item thrown away from the Dock has no record of where it came
-  from: it is in the trash, and Put Back in the file manager does not know about it.
+- **Only the Workspace keeps the Put Back record.** An item thrown away from the Dock is in the trash — the AppKit's
+  `-recycleURLs:completionHandler:` puts it in the same directory `WSTrash` uses — but Put Back in the file manager does
+  not know where it came from, because the record is the file manager's.
+- **The trash's window is the Workspace's, and the Dock only asks for it.** A click on the trash is `open_file`: the
+  compositor carries the path to the running file manager, which shows the folder. When no file manager is running the
+  click starts one instead, and the trash window is then a click away from its desktop.
 - **No bounce, no magnification, and nothing that puts an application on the Dock besides a gesture.** Bounce needs
   `-requestUserAttention:` to reach the Dock; magnification is a drawing decision nobody has made; and a pin can only be
   made from a tile that exists — a drag, or the menu row — because an "add an application" panel would need a Launch
