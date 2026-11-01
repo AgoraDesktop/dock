@@ -89,8 +89,9 @@ Workspace's windows are furniture, so closing them changes nothing about the pro
 the trash is asked before the pin rule, so a bundle let go there is a bundle being thrown away rather than one being
 pinned — the tile lights while it is over it, and the release moves the items to the trash. The move is the AppKit's
 recycle: the home trash on the item's own volume, a name that does not collide, and a copy-and-remove when a rename
-cannot cross a device. The mask answered is Copy because that is what a source may permit another application, and the
-DESTINATION is what decides that a copy onto the trash is a move into it.
+cannot cross a device. The mask answered is Move when the source permits one — the pointer's own feedback for a gesture that
+throws something away — and Copy when it does not, because the DESTINATION is what decides that a copy onto the trash
+empties it.
 
 **AND THE GESTURE IS DECIDED BY THE RELEASE.** A press within a few points of where it started is a click; past that it
 is a DRAG, the tile follows the pointer to the slot it is over, and letting go **repositions it in the Dock's order and

@@ -280,8 +280,8 @@ int main(void)
 			[view setTiles:[NSArray array]];
 			[view setController:nil];
 
-			check([view draggingEntered:document] == NSDragOperationCopy,
-			      "a document dragged over the TRASH is a drag the Dock takes");
+			check([view draggingEntered:document] == NSDragOperationMove,
+			      "a document dragged over the TRASH is a drag the Dock takes, as a move");
 			check([view cg_trashIsDropTarget], "and the trash is the tile it says it is over");
 			[view draggingExited:document];
 			check(![view cg_trashIsDropTarget], "which it stops saying when the drag leaves");

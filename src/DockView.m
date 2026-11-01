@@ -397,9 +397,13 @@ static NSArray *fn_file_paths(id <NSDraggingInfo> info)
 	NSPoint where = [self convertPoint:[info draggingLocation] fromView:nil];
 
 	if ([self hitTestTileAtPoint:where] == DockHitTrash && [fn_file_paths(info) count] > 0) {
+		NSDragOperation mask = [info draggingSourceOperationMask];
+
 		[self fn_setExternalDropIndex:(NSInteger)DockHitNone];
 		[self fn_setTrashTarget:YES];
-		return NSDragOperationCopy;
+		/* A THROWING-AWAY IS A MOVE, WHEN THE SOURCE PERMITS ONE — which is the pointer's own feedback. `Copy` is what
+		 * is left when it does not, because the destination is what decides that a copy onto the trash empties it. */
+		return ((mask & NSDragOperationMove) != 0) ? NSDragOperationMove : NSDragOperationCopy;
 	}
 	[self fn_setTrashTarget:NO];
 	if ([fn_application_paths(info) count] == 0) {
