@@ -584,9 +584,19 @@ static NSString *const DockPinnedApplicationsKey = @"DockPinnedApplications";
 	return deleted;
 }
 
+/* **THE ROW DOES NOT DO THE WORK ITSELF, IT ASKS FOR IT AFTER THE MENU.** A menu's action runs INSIDE the menu's own
+ * tracking loop — `-rightMouseDown:` calls `[NSMenu popUpContextMenu:…]`, which pumps until the menu ends — so anything
+ * the action does that touches windows, the application list or the strip happens while a menu session is up. That is
+ * the shape of a stall: the session cannot end until the action returns, and the action cannot finish cleanly while the
+ * session is up. The empty is therefore queued for the next turn of the run loop, which is after the menu has gone. */
 - (void)emptyTrash:(id)sender
 {
 	(void)sender;
+	[self performSelector:@selector(fn_emptyTrashNow) withObject:nil afterDelay:0.0];
+}
+
+- (void)fn_emptyTrashNow
+{
 	(void)[self cg_emptyTrashAtPath:[NSHomeDirectory() stringByAppendingPathComponent:@".Trash"]];
 	[self refresh];
 	[_view setNeedsDisplay:YES];
