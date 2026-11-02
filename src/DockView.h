@@ -31,7 +31,9 @@
 	NSArray *_tiles;			/* DockTile, in the order the Dock decided */
 	NSDictionary *_badgeLabels;		/* bundle identifier -> the label its tile shows (NSDockTile) */
 	DockOrientation _orientation;
-	NSImage *_trashIcon;			/* resolved once from the trash directory */
+	NSImage *_trashIcon;			/* resolved from the trash directory, and re-asked when it changes */
+	long _trashStamp;			/* the directory's modification time the icon was resolved at */
+	id _trashTimer;				/* RETAINED: the tick that notices the bin changed */
 	BOOL _trashTarget;			/* a drag carrying files is over the trash tile */
 	id _controller;				/* NOT retained: the controller owns this view */
 	NSInteger _pressIndex;			/* the tile the button went down on, or DockHitNone */

@@ -29,6 +29,9 @@
 #import <AppKit/NSWindow.h>
 #import <AppKit/NSWorkspace.h>
 #import <Foundation/NSURL.h>
+#import <Foundation/NSTimer.h>
+
+#include <sys/stat.h>
 
 #import <Foundation/NSArray.h>
 #import <Foundation/NSDictionary.h>
@@ -73,12 +76,23 @@
 		 * application's drag supplies — Workspace's icon view puts exactly that on the pasteboard — and it is the only
 		 * type this view asks for: a drag of text or of an image has nothing to pin. */
 		[self registerForDraggedTypes:[NSArray arrayWithObject:NSFilenamesPboardType]];
+		/* **AND THE BIN IS WATCHED, BECAUSE ITS PICTURE IS A FACT ABOUT ITS CONTENTS.** Nothing tells this view when
+		 * somebody throws something away — the file manager is another process — so the tile would keep drawing the can
+		 * it resolved last. One `stat` a second is the whole cost, and it is the same poll the desktop's work-area check
+		 * makes for the same reason. */
+		_trashTimer = [[NSTimer scheduledTimerWithTimeInterval:1.0
+							       target:self
+							     selector:@selector(fn_trashTick:)
+							     userInfo:nil
+							      repeats:YES] retain];
 	}
 	return self;
 }
 
 - (void)dealloc
 {
+	[_trashTimer invalidate];
+	[_trashTimer release];
 	[_tiles release];
 	[_badgeLabels release];
 	[_trashIcon release];
@@ -150,8 +164,13 @@
 }
 
 /* THE TRASH'S ICON IS THE ICON OF THE TRASH DIRECTORY — that is the Mac's own answer: `NSWorkspace -iconForFile:`
- * on `~/.Trash` returns the can, and Icon Services already maps that exact path to the theme's `user-trash` place icon
- * (`AGIconLoader.c`, `placeNameForPath`).
+ * on `~/.Trash` returns the can, and Icon Services maps that path to the theme's place art — `user-trash` while the bin
+ * is empty and `user-trash-full` once it holds something (`AGIconLoader.c`, `placeNameForPath`).
+ *
+ * **AND IT IS ASKED AGAIN WHEN THE BIN CHANGES.** The picture now DEPENDS on the directory's contents, so a cache held
+ * for the life of the process would show an empty can over a full bin until the Dock restarted. The directory's
+ * modification time is what says "look again": it moves on every recycle, Put Back and empty, and a `stat` per draw is
+ * the price of a tile that tells the truth.
  *
  * **SO THE DIRECTORY HAS TO EXIST, AND ON A FRESH INSTALL IT DOES NOT.** Nothing has been thrown away yet, so there is
  * no `~/.Trash` to look up: `stat` fails, the path is not a directory, and the icon that comes back is a GENERIC FILE —
@@ -159,19 +178,49 @@
  * the same at login (`demo/agora-session.sh`), because that is the Mac's arrangement: the directory is the user's, not
  * a window's. The Dock creates it here only so that a Dock started on its own is not wrong; `WSTrash` will be the one
  * that owns recycling, Put Back and per-volume semantics (WORKSPACE-PLAN.md §5.3). */
+/* The tick: has the bin changed since the icon was resolved? A repaint is the whole answer — the draw itself asks for
+ * the picture, which re-stats and re-resolves. */
+- (void)fn_trashTick:(NSTimer *)timer
+{
+	NSString *home = NSHomeDirectory();
+	struct stat info;
+
+	(void)timer;
+	if (home == nil) return;
+	{
+		NSString *trash = [home stringByAppendingPathComponent:@".Trash"];
+		long stamp = (stat([trash fileSystemRepresentation], &info) == 0) ? (long)info.st_mtime : 0;
+
+		if (stamp != _trashStamp) {
+			[self setNeedsDisplay:YES];
+		}
+	}
+}
+
 - (NSImage *)trashIcon
 {
-	if (_trashIcon == nil) {
-		NSString *home = NSHomeDirectory();
+	NSString *home = NSHomeDirectory();
 
-		if (home != nil) {
-			NSString *trash = [home stringByAppendingPathComponent:@".Trash"];
-			NSFileManager *files = [NSFileManager defaultManager];
+	if (home != nil) {
+		NSString *trash = [home stringByAppendingPathComponent:@".Trash"];
+		NSFileManager *files = [NSFileManager defaultManager];
+		struct stat info;
+		long stamp = 0;
 
-			if (![files fileExistsAtPath:trash]) {
-				[files createDirectoryAtPath:trash withIntermediateDirectories:NO attributes:nil error:NULL];
-			}
-			_trashIcon = [[[NSWorkspace sharedWorkspace] iconForFile:trash] retain];
+		if (![files fileExistsAtPath:trash]) {
+			[files createDirectoryAtPath:trash withIntermediateDirectories:NO attributes:nil error:NULL];
+		}
+		if (stat([trash fileSystemRepresentation], &info) == 0) {
+			stamp = (long)info.st_mtime;
+		}
+		/* THE SAME STAMP AND A PICTURE ALREADY IN HAND IS THE WHOLE ANSWER; anything else re-asks. */
+		if (_trashIcon == nil || stamp != _trashStamp) {
+			NSImage *resolved = [[NSWorkspace sharedWorkspace] iconForFile:trash];
+
+			[resolved retain];
+			[_trashIcon release];
+			_trashIcon = resolved;
+			_trashStamp = stamp;
 		}
 	}
 	return _trashIcon;
