@@ -22,6 +22,7 @@
 
 #import <AppKit/NSBezierPath.h>
 #import <AppKit/NSColor.h>
+#import <AppKit/NSMenu.h>
 #import <AppKit/NSPasteboard.h>
 #import <AppKit/NSFont.h>
 #import <AppKit/NSImage.h>
@@ -39,6 +40,8 @@
 #import <Foundation/NSString.h>
 
 #include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 /* **WHAT THE VIEW ASKS ITS CONTROLLER FOR, DECLARED WHERE IT IS CALLED.** The view reports tile POSITIONS and the
  * controller decides what they mean; declaring the messages here keeps the view free of the controller's header and
@@ -226,6 +229,28 @@
 	return _trashIcon;
 }
 
+/* **A RIGHT-CLICK ON THE BIN IS THE BIN'S MENU, AND A RIGHT-CLICK ANYWHERE ELSE IS NOTHING YET.** The strip's tiles
+ * raise theirs from a press (`-showMenuForTileAtIndex:withEvent:`), which is the application's answer; the trash has no
+ * application to ask, so its rows are the Dock's own and they are raised the ordinary way — the AppKit's
+ * `-menuForEvent:`, which `-rightMouseDown:` asks. */
+- (NSMenu *)menuForEvent:(NSEvent *)event
+{
+	NSPoint where;
+
+	if (event == nil || _controller == nil) {
+		return nil;
+	}
+	where = [self convertPoint:[event locationInWindow] fromView:nil];
+	if (getenv("AGORA_DOCK_DIAG") != NULL) {
+		fprintf(stderr, "dock: menu asked at (%d,%d) hit %ld\n", (int)where.x, (int)where.y,
+			(long)[self hitTestTileAtPoint:where]);
+	}
+	if ([self hitTestTileAtPoint:where] == DockHitTrash) {
+		return [_controller trashMenu];
+	}
+	return nil;
+}
+
 /* ---------------------------------------------------------------------------------------------------
  * the hit test
  * --------------------------------------------------------------------------------------------------- */
@@ -345,7 +370,7 @@
 		NSPoint where = [self convertPoint:[(NSEvent *)event locationInWindow] fromView:nil];
 
 		if (_controller != nil && [self hitTestTileAtPoint:where] == DockHitTrash) {
-			[_controller openTrash];
+			[_controller openTrash:nil];
 		}
 		return;
 	}
@@ -359,6 +384,11 @@
 	}
 }
 
+/* **A RIGHT-CLICK ASKS WHAT IS UNDER IT, AND THE TRASH IS NOT A TILE.** A tile's menu comes from the application it
+ * names (`-showMenuForTileAtIndex:withEvent:`); the bin has no application to ask, so its rows are the Dock's own and
+ * they are popped here — the same `-menuForEvent:` answer a plain view would give, raised at the pointer. Without this
+ * branch the trash was the one part of the strip with no menu at all: `DockHitTrash` is negative, so the tile branch
+ * above sent nothing for it. */
 - (void)rightMouseDown:(id)event
 {
 	NSPoint where = [self convertPoint:[event locationInWindow] fromView:nil];
@@ -366,6 +396,14 @@
 
 	if (hit >= 0 && _controller != nil) {
 		[_controller showMenuForTileAtIndex:[NSNumber numberWithInteger:hit] withEvent:event];
+		return;
+	}
+	if (hit == DockHitTrash && _controller != nil) {
+		NSMenu *menu = [self menuForEvent:event];
+
+		if (menu != nil) {
+			[NSMenu popUpContextMenu:menu withEvent:event forView:self];
+		}
 	}
 }
 

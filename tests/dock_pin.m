@@ -99,7 +99,9 @@ static void check(int ok, const char *name)
 	NSInteger index;
 	int calls;
 	int trashCalls;
+	int trashMenuCalls;
 	BOOL answer;
+	NSMenu *trashMenu;	/* the menu the view hands back, or nil */
 }
 @end
 
@@ -118,7 +120,9 @@ static void check(int ok, const char *name)
 - (void)commitTileOrder {}
 - (void)moveTileFromIndex:(NSNumber *)from toIndex:(NSNumber *)to { (void)from; (void)to; }
 - (void)activateTileAtIndex:(NSNumber *)i { (void)i; }
-- (void)openTrash { trashCalls++; }
+- (void)openTrash:(id)sender { (void)sender; trashCalls++; }
+- (NSMenu *)trashMenu { trashMenuCalls++; return trashMenu; }
+- (void)emptyTrash:(id)sender { (void)sender; }
 - (void)showMenuForTileAtIndex:(NSNumber *)i withEvent:(id)e { (void)i; (void)e; }
 
 - (void)dealloc
@@ -284,6 +288,23 @@ int main(void)
 			[view mouseDragged:fn_mouse(NSLeftMouseDragged, NSMakePoint(over.x, over.y + 60.0))];
 			[view mouseUp:fn_mouse(NSLeftMouseUp, NSMakePoint(over.x, over.y + 60.0))];
 			check(controller->trashCalls == 1, "and a drag that starts on it is not a second click");
+
+			/* **AND A RIGHT-CLICK ON IT ASKS THE CONTROLLER FOR THE BIN'S MENU** — the reference Dock's three rows — while
+			 * a right-click anywhere else on the strip is nobody's menu yet. */
+			{
+				NSMenu *marker = [[[NSMenu alloc] initWithTitle:@"Trash"] autorelease];
+				NSMenu *answer;
+				/* The bin sits 8 points above the bottom and is 48 tall, so "elsewhere" is well clear of it. */
+				NSPoint elsewhere = NSMakePoint(NSMidX([view bounds]), NSHeight([view bounds]) - 20.0);
+
+				controller->trashMenu = marker;
+				answer = [view menuForEvent:fn_mouse(NSRightMouseDown, over)];
+				check(answer == marker && controller->trashMenuCalls == 1,
+				      "a right-click on the trash asks for the bin's menu");
+				answer = [view menuForEvent:fn_mouse(NSRightMouseDown, elsewhere)];
+				check(answer == nil, "and a right-click elsewhere on the strip is no menu at all");
+				controller->trashMenu = nil;
+			}
 		}
 
 		[manager removeItemAtPath:root error:NULL];

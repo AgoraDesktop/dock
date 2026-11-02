@@ -70,6 +70,17 @@
 - (void)activateTileAtIndex:(NSNumber *)index;
 - (void)showMenuForTileAtIndex:(NSNumber *)index withEvent:(id)event;
 
+/* **THE TRASH'S OWN MENU, WHICH IS NOT A TILE'S.** The bin is not an application and has no application to ask: its
+ * three rows are the Dock's, and they are the reference Dock's — Empty Trash, a separator, Open. `-openTrash:` is the
+ * same request a click on the tile makes; `-emptyTrash:` deletes what the directory holds, its Put Back records with it. */
+- (NSMenu *)trashMenu;
+- (void)openTrash:(id)sender;
+- (void)emptyTrash:(id)sender;
+/* **THE FILE WORK, WITHOUT THE STRIP.** What "empty" means is a directory's contents deleted, records and all; the
+ * action above is that plus a repaint. A probe drives this one, so the deleting is measured on a trash of its own
+ * rather than on the account's. */
+- (NSUInteger)cg_emptyTrashAtPath:(NSString *)path;
+
 /* **THE DRAG, IN THREE DOORS, BECAUSE A DRAG IS THREE MOMENTS.** `-move…` is one step of a live drag (the tile
  * follows the pointer, nothing is written down); `-commitTileOrder` is the release that PINS the tile where it was
  * dropped and writes the order to the defaults; `-cancelTileOrder` puts back the order the drag started from, for a

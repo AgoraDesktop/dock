@@ -46,5 +46,17 @@ target_link_libraries(dock_pin PRIVATE AgoraApp::App m)
 add_test(NAME dock-pin COMMAND dock_pin)
 set_tests_properties(dock-pin PROPERTIES ENVIRONMENT "${_dock_test_env}")
 
+# **THE BIN'S MENU AND WHAT "EMPTY" MEANS.** The trash is the one tile with no application behind it, so its rows are the
+# Dock's own — Empty Trash, a separator, Open — and emptying is the directory's contents deleted, Put Back records and
+# all. A real Dock needs a screen; the controller is made without a strip (`-init`), which is why this needs none, and the
+# emptying is driven through `-cg_emptyTrashAtPath:` so the trash emptied is the probe's.
+add_executable(dock_trash dock_trash.m "${CMAKE_CURRENT_SOURCE_DIR}/../src/DockController.m"
+	"${CMAKE_CURRENT_SOURCE_DIR}/../src/DockView.m" "${CMAKE_CURRENT_SOURCE_DIR}/../src/DockLayout.m"
+	"${CMAKE_CURRENT_SOURCE_DIR}/../src/DockTile.m" "${CMAKE_CURRENT_SOURCE_DIR}/../src/DockOrder.m")
+target_include_directories(dock_trash PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src")
+target_link_libraries(dock_trash PRIVATE AgoraApp::App m)
+add_test(NAME dock-trash COMMAND dock_trash)
+set_tests_properties(dock-trash PROPERTIES ENVIRONMENT "${_dock_test_env}")
+
 add_test(NAME dock-badge COMMAND dock_badge)
 set_tests_properties(dock-badge PROPERTIES ENVIRONMENT "${_dock_test_env}")

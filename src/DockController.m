@@ -502,8 +502,9 @@ static NSString *const DockPinnedApplicationsKey = @"DockPinnedApplications";
  * MEASURED as the reason this is a request rather than `-openURL:`: opening a folder by URL resolves an application by
  * DOCUMENT TYPE, and this tier's Workspace declares none — and a second Workspace would be a second desktop. The
  * application that is already running is the one that has to be told. */
-- (void)openTrash
+- (void)openTrash:(id)sender
 {
+	(void)sender;
 	NSString *trash = [NSHomeDirectory() stringByAppendingPathComponent:@".Trash"];
 	NSArray *running = [[NSWorkspace sharedWorkspace] runningApplications];
 	NSRunningApplication *desktop = nil;
@@ -538,6 +539,57 @@ static NSString *const DockPinnedApplicationsKey = @"DockPinnedApplications";
 	/* NOTHING TO ASK: the file manager is not running, so the click starts it — which is what a tile click does for
 	 * every other application. */
 	[self launchTile:[self tileWithIdentifier:DockDesktopIdentifier]];
+}
+
+/* **THE BIN'S MENU: EMPTY TRASH, A SEPARATOR, OPEN — the reference Dock's three, in its order.** It is the Dock's own
+ * and not an application's, because a trash is not an application: there is nobody to ask for rows.
+ *
+ * **EMPTYING IS NOT UNDOABLE AND DOES NOT ASK.** `WSTrash` owns the recycle and the empty in the file manager, where a
+ * conflict sheet and an undo stack live; the Dock has neither, so this deletes the directory's contents — the Put Back
+ * records with them, since a record nothing points at is litter — and the strip draws the empty bin on its next tick.
+ * Asking a modal question from a window that cannot take the keyboard (`set_activatable:NO`) is the one thing this tier
+ * must not do here, so the question is not asked: the row is the row, and a trash can be refilled with one drag. */
+- (NSMenu *)trashMenu
+{
+	NSMenu *menu = [[[NSMenu alloc] initWithTitle:@"Trash"] autorelease];
+	NSMenuItem *empty = [[[NSMenuItem alloc] initWithTitle:@"Empty Trash"
+						       action:@selector(emptyTrash:)
+						keyEquivalent:@""] autorelease];
+	NSMenuItem *open = [[[NSMenuItem alloc] initWithTitle:@"Open"
+						      action:@selector(openTrash:)
+					       keyEquivalent:@""] autorelease];
+
+	[empty setTarget:self];
+	[open setTarget:self];
+	[menu addItem:empty];
+	[menu addItem:[NSMenuItem separatorItem]];
+	[menu addItem:open];
+	return menu;
+}
+
+- (NSUInteger)cg_emptyTrashAtPath:(NSString *)path
+{
+	NSFileManager *files = [NSFileManager defaultManager];
+	NSArray *entries = [files contentsOfDirectoryAtPath:path error:NULL];
+	NSUInteger deleted = 0;
+	NSUInteger i;
+
+	for (i = 0; i < [entries count]; i++) {
+		NSString *entry = [path stringByAppendingPathComponent:[entries objectAtIndex:i]];
+
+		if ([files removeItemAtPath:entry error:NULL]) {
+			deleted++;
+		}
+	}
+	return deleted;
+}
+
+- (void)emptyTrash:(id)sender
+{
+	(void)sender;
+	(void)[self cg_emptyTrashAtPath:[NSHomeDirectory() stringByAppendingPathComponent:@".Trash"]];
+	[self refresh];
+	[_view setNeedsDisplay:YES];
 }
 
 - (void)activateTileAtIndex:(NSNumber *)index
