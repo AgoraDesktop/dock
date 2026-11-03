@@ -173,9 +173,38 @@ static NSString *const DockPinnedApplicationsKey = @"DockPinnedApplications";
  * the model: running applications, pinned tiles, and the one order the two make
  * --------------------------------------------------------------------------------------------------- */
 
-/* **THE DOCK IS NOT IN ITS OWN LIST.** Its window declares the Dock's bundle identifier like any application's, so
- * the workspace reports it; a Dock that drew a tile for itself would be a tile that does nothing. The filter is by
- * identifier and not by object, because a relaunch makes a new object with the same name. */
+/* **SHELL COMPONENTS ARE NOT APPLICATIONS, AND THE DOCK IS NOT IN ITS OWN LIST.** A shell component's windows declare
+ * that component's bundle identifier like any application's, so the workspace reports it — and a tile for furniture
+ * would be a tile that does nothing. The Dock is the first of these (the file manager's desktop window is the
+ * furniture it draws); the System UI is the second, and its two windows are the System menu and the About panel: both
+ * are the SERVER's furniture drawn by a helper, and a person asked for the menu, never for a tile called "System UI".
+ *
+ * **THE FILTER IS BY IDENTIFIER AND NOT BY OBJECT**, because a relaunch makes a new object with the same name. The
+ * eventual home for this rule is the bundle's own `LSUIElement` — an agent application, which the Mac calls exactly
+ * this — and `NSRunningApplication.h` already records that this tier does not read it yet; until it does, the list of
+ * shell components lives here, where the one program that asks is.
+ *
+ * **AND A PINNED TILE IS A PERSON'S OWN STATEMENT**, so a pinned identifier survives this filter: the tiles below are
+ * the ones a refresh ADDS, and removing somebody's pin because its application is a shell component would be this
+ * filter overruling the only part of the Dock a person wrote down. */
+static BOOL fn_isShellComponent(NSString *identifier)
+{
+	static NSString * const components[] = {
+		@"io.github.agoradesktop.dock",
+		@"io.github.agoradesktop.systemui"
+	};
+	NSUInteger i;
+
+	if (identifier == nil || [identifier length] == 0) {
+		return NO;
+	}
+	for (i = 0; i < sizeof components / sizeof components[0]; i++) {
+		if ([identifier isEqualToString:components[i]]) {
+			return YES;
+		}
+	}
+	return NO;
+}
 /* **THE LIST A REFRESH DRAWS FROM, WITH THE APPLICATION A TERMINATE NOTIFICATION NAMED TAKEN OUT.** `NSWorkspace` posts
  * `NSWorkspaceDidTerminateApplicationNotification` BEFORE it drops the application from `-runningApplications` — on
  * purpose, so a handler can still read what went — which means a refresh inside that callback still sees the quitting
@@ -213,13 +242,12 @@ static NSString *const DockPinnedApplicationsKey = @"DockPinnedApplications";
 - (NSArray *)applicationsExcludingSelf:(NSArray *)all
 {
 	NSMutableArray *kept = [NSMutableArray array];
-	NSString *selfIdentifier = [[NSBundle mainBundle] bundleIdentifier];
 	NSUInteger i;
 
 	for (i = 0; i < [all count]; i++) {
 		NSRunningApplication *application = [all objectAtIndex:i];
 
-		if (selfIdentifier != nil && [[application bundleIdentifier] isEqualToString:selfIdentifier]) {
+		if (fn_isShellComponent([application bundleIdentifier])) {
 			continue;
 		}
 		[kept addObject:application];
