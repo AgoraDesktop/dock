@@ -58,5 +58,17 @@ target_link_libraries(dock_trash PRIVATE AgoraApp::App m)
 add_test(NAME dock-trash COMMAND dock_trash)
 set_tests_properties(dock-trash PROPERTIES ENVIRONMENT "${_dock_test_env}")
 
+# **AN APPLICATION THAT HAS JUST QUIT.** `NSWorkspace` posts the terminate notification before it drops the application
+# from its own list, so the refresh that notification triggers has to leave it out: otherwise the strip keeps an unpinned
+# tile and a pinned one keeps its dot. The rule is a class method, so this needs no screen — only the controller's
+# source, the way the trash's probe does.
+add_executable(dock_quit dock_quit.m "${CMAKE_CURRENT_SOURCE_DIR}/../src/DockController.m"
+	"${CMAKE_CURRENT_SOURCE_DIR}/../src/DockView.m" "${CMAKE_CURRENT_SOURCE_DIR}/../src/DockLayout.m"
+	"${CMAKE_CURRENT_SOURCE_DIR}/../src/DockTile.m" "${CMAKE_CURRENT_SOURCE_DIR}/../src/DockOrder.m")
+target_include_directories(dock_quit PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src")
+target_link_libraries(dock_quit PRIVATE AgoraApp::App m)
+add_test(NAME dock-quit COMMAND dock_quit)
+set_tests_properties(dock-quit PROPERTIES ENVIRONMENT "${_dock_test_env}")
+
 add_test(NAME dock-badge COMMAND dock_badge)
 set_tests_properties(dock-badge PROPERTIES ENVIRONMENT "${_dock_test_env}")

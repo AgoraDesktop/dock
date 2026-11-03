@@ -66,6 +66,13 @@
 /* The strip the Dock has taken, in screen coordinates — the number a test or a log is about. */
 - (NSRect)stripRect;
 
+/* **THE LIST A REFRESH DRAWS FROM, WITH A TERMINATED APPLICATION TAKEN OUT.** `NSWorkspace` posts its terminate
+ * notification BEFORE it drops the application from `-runningApplications`, so a handler that simply refreshed drew the
+ * quitting application back: the strip kept an unpinned tile and a pinned one kept its dot. The notification's own
+ * application is the one fact that says it is gone. */
++ (NSArray *)applicationsForRefresh:(NSArray *)running excluding:(nullable NSRunningApplication *)terminating;
+- (void)refreshExcluding:(nullable NSRunningApplication *)terminating;
+
 /* The doors the view calls. */
 - (void)activateTileAtIndex:(NSNumber *)index;
 - (void)showMenuForTileAtIndex:(NSNumber *)index withEvent:(id)event;

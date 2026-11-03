@@ -176,6 +176,40 @@ static NSString *const DockPinnedApplicationsKey = @"DockPinnedApplications";
 /* **THE DOCK IS NOT IN ITS OWN LIST.** Its window declares the Dock's bundle identifier like any application's, so
  * the workspace reports it; a Dock that drew a tile for itself would be a tile that does nothing. The filter is by
  * identifier and not by object, because a relaunch makes a new object with the same name. */
+/* **THE LIST A REFRESH DRAWS FROM, WITH THE APPLICATION A TERMINATE NOTIFICATION NAMED TAKEN OUT.** `NSWorkspace` posts
+ * `NSWorkspaceDidTerminateApplicationNotification` BEFORE it drops the application from `-runningApplications` — on
+ * purpose, so a handler can still read what went — which means a refresh inside that callback still sees the quitting
+ * application as running: MEASURED as "quitting an app doesn't always make it disappear from the dock if it's unpinned,
+ * nor make the indicator light go out if it's pinned", because the refresh that the notification triggered drew the
+ * application back exactly as it was. The notification's own application is the answer, and this is where it is applied. */
++ (NSArray *)applicationsForRefresh:(NSArray *)running excluding:(NSRunningApplication *)terminating
+{
+	NSMutableArray *kept;
+	NSString *identifier;
+	NSUInteger i;
+
+	if (terminating == nil) {
+		return running;
+	}
+	identifier = [terminating bundleIdentifier];
+	kept = [NSMutableArray array];
+	for (i = 0; i < [running count]; i++) {
+		NSRunningApplication *application = [running objectAtIndex:i];
+
+		/* BY IDENTITY AND BY IDENTIFIER: a client that declares no bundle cannot be told apart by name, and the
+		 * notification names the very object the list is holding. */
+		if (application == terminating) {
+			continue;
+		}
+		if (identifier != nil && [identifier length] > 0
+		    && [[application bundleIdentifier] isEqualToString:identifier]) {
+			continue;
+		}
+		[kept addObject:application];
+	}
+	return kept;
+}
+
 - (NSArray *)applicationsExcludingSelf:(NSArray *)all
 {
 	NSMutableArray *kept = [NSMutableArray array];
@@ -365,7 +399,14 @@ static NSString *const DockPinnedApplicationsKey = @"DockPinnedApplications";
 
 - (void)refresh
 {
-	NSArray *running = [self applicationsExcludingSelf:[[NSWorkspace sharedWorkspace] runningApplications]];
+	[self refreshExcluding:nil];
+}
+
+- (void)refreshExcluding:(NSRunningApplication *)terminating
+{
+	NSArray *running = [self applicationsExcludingSelf:
+		[DockController applicationsForRefresh:[[NSWorkspace sharedWorkspace] runningApplications]
+					    excluding:terminating]];
 	NSMutableDictionary *runningByIdentifier = [NSMutableDictionary dictionary];
 	NSMutableArray *runningIdentifiers = [NSMutableArray array];
 	NSMutableArray *anonymous = [NSMutableArray array];
@@ -485,6 +526,14 @@ static NSString *const DockPinnedApplicationsKey = @"DockPinnedApplications";
 			}
 			[self launchTile:[self tileWithIdentifier:DockDesktopIdentifier]];
 		}
+	}
+	/* **AND A TERMINATED APPLICATION IS LEFT OUT OF THIS REFRESH**, because the workspace's list has not dropped it yet:
+	 * see `+applicationsForRefresh:excluding:`. A launch or an activation refreshes with the list as it is. */
+	if ([[notification name] isEqualToString:NSWorkspaceDidTerminateApplicationNotification]) {
+		NSRunningApplication *gone = [[notification userInfo] objectForKey:NSWorkspaceApplicationKey];
+
+		[self refreshExcluding:gone];
+		return;
 	}
 	[self refresh];
 }
