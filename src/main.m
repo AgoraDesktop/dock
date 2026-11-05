@@ -100,6 +100,10 @@ int main(int argc, char **argv)
 		 * that the workspace's snapshots arrive the way they will in a session. */
 		NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:seconds];
 
+		/* **A PUMP THE CALLER DRIVES IS STILL THE APPLICATION RUNNING, AND THE WINDOWS MUST BE PAINTED.** A bounded run
+		 * that never said so left every menu it opened undriven (`-isRunning` is what a tracking loop asks) and never
+		 * applied a window drag, whose move is made once per pass by `-updateWindows`. */
+		[application cg_beginCallerDrivenRun];
 		while ([deadline timeIntervalSinceNow] > 0.0) {
 			NSEvent *event = [application nextEventMatchingMask:NSAnyEventMask
 								  untilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]
@@ -109,7 +113,9 @@ int main(int argc, char **argv)
 			if (event != nil) {
 				[application sendEvent:event];
 			}
+			[application updateWindows];
 		}
+		[application cg_endCallerDrivenRun];
 	} else {
 		[application run];
 	}
